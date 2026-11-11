@@ -177,6 +177,19 @@ main.full{overflow:hidden}
 .auth-actions{display:flex;flex-direction:column;gap:10px}
 .btn.xl{min-height:52px;font-size:16px;border-radius:16px}
 .btn.danger{color:var(--bad)}
+.link-b.danger{color:var(--bad)}
+.btn.danger-fill{background:var(--bad);color:#fff}
+.menu-list{display:flex;flex-direction:column;gap:8px;padding:8px 16px 16px}
+.legal-links{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;font-size:13px}
+.legal-links a,.legal-note a{color:var(--muted);text-decoration:underline}
+.legal-note{margin:6px 0 0;line-height:1.45}
+.blk-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px}
+.blk-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-row{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.rep-th{width:84px;height:104px;border-radius:12px;overflow:hidden;background:var(--raise);display:grid;place-items:center}
+.rep-th img,.rep-th video{width:100%;height:100%;object-fit:cover}
+.rep-mid{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rep-btns{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
 .auth-foot{display:flex;justify-content:center;align-items:center;gap:6px;padding:16px 0 2px;border-top:1px solid var(--line);font-size:14px;flex-wrap:wrap}
 .link-b{color:var(--accent);font-weight:700;font-size:14px;padding:6px 4px}
 .link-b.center{align-self:center}
@@ -1153,7 +1166,8 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
   var prof = function (id) { return { id: id, name: '', avatarUrl: '', color: '#b07a52', email: null, isMe: id === uid(), guest: false }; };
   var no = function () { return Promise.resolve(false); };
   var user = {
-    id: function () { return ready.then(uid); }, isOwner: no, canEdit: no, can: function () { return ready.then(function () { return !!session; }); },
+    // moderators are listed in the server's admins table (only the SQL Editor can add one); they may remove any post
+    id: function () { return ready.then(uid); }, isOwner: function () { return ready.then(function () { return session ? sb.rpc('is_admin').then(function (r) { return !r.error && r.data === true; }, function () { return false; }) : false; }); }, canEdit: no, can: function () { return ready.then(function () { return !!session; }); },
     name: function () { return Promise.resolve(''); }, email: function () { return ready.then(function () { return session && session.user ? session.user.email || null : null; }); }, avatarUrl: function () { return Promise.resolve(null); },
     me: function () { return ready.then(function () { return { id: uid(), name: '', avatarUrl: '', color: '#ff7a1a', email: session && session.user ? session.user.email || null : null, isOwner: false, canEdit: false }; }); },
     profiles: function (ids) { var o = {}; (Array.isArray(ids) ? ids : [ids]).forEach(function (i) { o[i] = prof(i); }); return Promise.resolve(o); },
@@ -1164,6 +1178,10 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
     signUp: function (email, password) { return sb.auth.signUp({ email: email, password: password }).then(function (r) { if (r.error) throw authErr(r.error); session = r.data.session || null; return { signedIn: !!r.data.session, id: r.data.user ? r.data.user.id : null }; }, function (e) { throw authErr(e); }); },
     signIn: function (email, password) { return sb.auth.signInWithPassword({ email: email, password: password }).then(function (r) { if (r.error) throw authErr(r.error); session = r.data.session || null; return { id: r.data.user ? r.data.user.id : null }; }, function (e) { throw authErr(e); }); },
     signOut: function () { return sb.auth.signOut().then(function () { session = null; }, function () { session = null; }); },
+    // deletes the signed-in account and every document it wrote (files are removed by the app before this)
+    // true when supabase/safety.sql has been run (it adds is_admin and delete_me)
+    canDelete: function () { return ready.then(function () { return sb.rpc('is_admin'); }).then(function (r) { return !r.error; }, function () { return false; }); },
+    deleteMe: function () { return ready.then(function () { return sb.rpc('delete_me'); }).then(function (r) { if (r.error) throw dbErr(r.error); session = null; return sb.auth.signOut().catch(function () {}); }); },
     reset: function (email) { return sb.auth.resetPasswordForEmail(email).then(function (r) { if (r.error) throw authErr(r.error); }, function (e) { throw authErr(e); }); }
   };
 
@@ -1391,6 +1409,8 @@ const P={
   image:'<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
   send:'<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>',
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13"/>',
+  more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   mute:'<path d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
   sound:'<path d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>',
   video:'<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="m16 10.5 5-3v9l-5-3z"/>',
@@ -1484,7 +1504,7 @@ const EN={
  'Körülnézek bejelentkezés nélkül':'Look around without signing in','Később a beállításokban bármikor módosíthatod.':'You can change it any time in Settings.','Profilképhez szerkesztői hozzáférés kell, a többit elmentettem.':'A profile photo needs editor access; the rest was saved.','Nyelv: magyar':'Language: English'
 };
 const RULES=[
- [/^(\d+) perce$/,(m,a)=>a+' min ago'],[/^(\d+) hét$/,(m,a)=>pl(a,'week')],[/^Ez már a\(z\) (\d+)\. ilyen jelvényed\.$/,(m,a)=>'This is badge number '+a+' of this kind for you.'],[/^(\d+) órája$/,(m,a)=>a+' h ago'],[/^(\d+) napja$/,(m,a)=>pl(a,'day')+' ago'],
+ [/^(\d+) perce$/,(m,a)=>a+' min ago'],[/^Törlődik a profilod, minden posztod és reeled a képekkel együtt(, és a bejelentkezésed is)?\. Ez nem vonható vissza\.$/,(m,a)=>'Your profile and all your posts and reels with their pictures'+(a?', and your sign-in too,':'')+' will be deleted. This cannot be undone.'],[/^(\d+) hét$/,(m,a)=>pl(a,'week')],[/^Ez már a\(z\) (\d+)\. ilyen jelvényed\.$/,(m,a)=>'This is badge number '+a+' of this kind for you.'],[/^(\d+) órája$/,(m,a)=>a+' h ago'],[/^(\d+) napja$/,(m,a)=>pl(a,'day')+' ago'],
  [/^(\d+) kedvelés$/,(m,a)=>pl(a,'like')],[/^Mind a (\d+) hozzászólás megtekintése$/,(m,a)=>'View all '+a+' comments'],[/^(\d+) hozzászólás$/,(m,a)=>pl(a,'comment')],
  [/^(\d+) tag · alapította: (.+)$/,(m,a,b)=>pl(a,'member')+' · created by '+tr(b)],[/^(\d+) tag · (.+)$/,(m,a,b)=>pl(a,'member')+' · '+tr(b)],[/^(\d+) tag$/,(m,a)=>pl(a,'member')],
  [/^(\d+) poszt a héten$/,(m,a)=>pl(a,'post')+' this week'],[/^(\d+) poszt$/,(m,a)=>pl(a,'post')],[/^(\d+) like$/,(m,a)=>pl(a,'like')],[/^· (\d+) like$/,(m,a)=>'· '+pl(a,'like')],
@@ -1559,6 +1579,14 @@ const validPost=p=>p&&typeof p.author==='string'&&isAsset(p.asset)&&typeof p.at=
 const MAXP=10;
 const postAssets=p=>{ const l=Array.isArray(p.assets)?p.assets.filter(isAsset).slice(0,MAXP):[]; return l.length?l:[p.asset]; };
 const okPosts=()=>S.posts.filter(validPost);
+/* safety: posts I reported are hidden from me (on this device), people I blocked disappear from my feed, reels, groups,
+   comments and chats (stored in my own profile: people/<me>.blocked = {id: time}) */
+const blockedMap=()=>{ const b=(S.people[S.uid]||{}).blocked; return b&&typeof b==='object'?b:{}; };
+const isBlocked=id=>!!id&&id!==S.uid&&!!blockedMap()[id];
+let HIDDEN=new Set(); try{ HIDDEN=new Set(JSON.parse(localStorage.getItem('pz_hidden')||'[]')); }catch{}
+const shown=p=>!isBlocked(p.author)&&!HIDDEN.has(p.id);
+const seenPosts=()=>okPosts().filter(shown);
+const LEGAL='https://ferencleuko.github.io/poophub/';
 const likeEntries=p=>Object.entries(p.likes&&typeof p.likes==='object'?p.likes:{}).filter(([,v])=>typeof v==='number'&&v>0);
 const likeCount=p=>likeEntries(p).length;
 const liked=p=>!!S.uid&&likeEntries(p).some(([k])=>k===S.uid);
@@ -1943,7 +1971,7 @@ function renderBanner(){
 
 /* ---------- feed ---------- */
 const feedEls=new Map();
-function baseSig(p){ const g=p.group&&groupById(p.group); return [postAssets(p).join(','),p.caption,p.filter,p.kind,p.hu,g?g.name:'',nm(p.author),(S.prof[p.author]||{}).avatarUrl,(S.people[p.author]||{}).avatar,S.uid,S.isOwner].join('|'); }
+function baseSig(p){ const g=p.group&&groupById(p.group); return [postAssets(p).join(','),p.caption,p.filter,p.kind,p.hu,S.isOwner,g?g.name:'',nm(p.author),(S.prof[p.author]||{}).avatarUrl,(S.people[p.author]||{}).avatar,S.uid,S.isOwner].join('|'); }
 function mediaHTML(p,full){
   const f=h(fx(p.filter));
   if(p.kind==='reel') return `<video src="${blobUrl(p.asset)}#t=0.1" muted loop playsinline preload="metadata" style="filter:${f}"></video>`;
@@ -1956,7 +1984,7 @@ function mediaHTML(p,full){
 function postCard(p){
   const el=document.createElement('article'); el.className='post'; el.dataset.pid=p.id;
   const g=p.group&&groupById(p.group); const canDel=p.author===S.uid||S.isOwner;
-  const delBtn=canDel?`<button class="icon-btn del" data-act="del" aria-label="Poszt törlése">${ic('trash')}</button>`:'';
+  const delBtn=(canDel?`<button class="icon-btn del" data-act="del" aria-label="Poszt törlése">${ic('trash')}</button>`:'')+(p.author!==S.uid&&S.uid?`<button class="icon-btn" data-act="postmenu" aria-label="Továbbiak">${ic('more')}</button>`:'');
   const media=`<div class="media" data-act="${p.kind==='reel'?'reelopen':'noop'}">${mediaHTML(p,true)}${p.kind==='reel'?`<span class="badge-reel">${ic('play')}Reel</span>`:''}<div class="burst">${ic('heart','fill')}</div></div>`;
   el.innerHTML=`<div class="post-h"><button class="who-btn" data-act="profile" data-uid="${h(p.author)}">${av(p.author,36)}<span class="who">${h(nm(p.author))}</span></button>${g?`<button class="chip" data-act="group" data-gid="${h(g.id)}">${h(str(g.name,40))}</button>`:''}${counts(p)?'':'<span class="chip wild">Állati</span>'}<span class="time"></span>${delBtn}</div>
     ${media}
@@ -1985,11 +2013,11 @@ function syncKeyed(list,items,map,make,update){
 function renderFeed(){
   const root=$('#v-feed');
   if(!root.dataset.built){ root.innerHTML='<div class="people-row" id="peopleRow"></div><div class="feed" id="feedList"></div><div id="feedEmpty"></div>'; root.dataset.built='1'; }
-  const lastAt={}; for(const p of okPosts()) lastAt[p.author]=Math.max(lastAt[p.author]||0,p.at);
-  const ppl=Object.keys(S.people).filter(id=>id!==S.uid).sort((a,b)=>(lastAt[b]||0)-(lastAt[a]||0));
+  const lastAt={}; for(const p of seenPosts()) lastAt[p.author]=Math.max(lastAt[p.author]||0,p.at);
+  const ppl=Object.keys(S.people).filter(id=>id!==S.uid&&!isBlocked(id)).sort((a,b)=>(lastAt[b]||0)-(lastAt[a]||0));
   $('#peopleRow').innerHTML=`<button class="person" data-act="camera"><span class="ring add">${av(S.uid,58)}<i class="plus">${ic('plus')}</i></span><span class="n">Új poszt</span></button>`+
     ppl.map(id=>`<button class="person" data-act="profile" data-uid="${h(id)}"><span class="ring">${av(id,58)}</span><span class="n">${h(nm(id))}</span></button>`).join('');
-  const posts=okPosts();
+  const posts=seenPosts();
   syncKeyed($('#feedList'),posts,feedEls,postCard,updateCard); watchFeed();
   $('#feedEmpty').innerHTML=posts.length?'':`<div class="empty"><div class="lens sm"></div><h3>Még nincs poszt</h3><p>Fotózd le az első remekművet a beépített kamerával, aztán hívd meg a barátaidat.</p><button class="btn" data-act="camera">${ic('camera')}Kamera megnyitása</button></div>`;
 }
@@ -2013,7 +2041,7 @@ function reelEl(p){
   const el=document.createElement('div'); el.className='reel'; el.dataset.pid=p.id;
   const canDel=p.author===S.uid||S.isOwner;
   el.innerHTML=`<video src="${blobUrl(p.asset)}" playsinline loop muted preload="metadata" style="filter:${h(fx(p.filter))}"></video><div class="reel-shade"></div><div class="paused-ic">${ic('play')}</div><div class="burst">${ic('heart','fill')}</div>
-  <div class="reel-side"><button data-act="like" class="like-btn"></button><button data-act="comments" aria-label="Hozzászólások">${ic('comment')}<span class="cn"></span></button><button data-act="mute" class="mute"></button>${canDel?`<button data-act="del" class="del" aria-label="Reel törlése">${ic('trash')}</button>`:''}</div>
+  <div class="reel-side"><button data-act="like" class="like-btn"></button><button data-act="comments" aria-label="Hozzászólások">${ic('comment')}<span class="cn"></span></button><button data-act="mute" class="mute"></button>${canDel?`<button data-act="del" class="del" aria-label="Reel törlése">${ic('trash')}</button>`:''}${p.author!==S.uid&&S.uid?`<button data-act="postmenu" aria-label="Továbbiak">${ic('more')}</button>`:''}</div>
   <div class="reel-meta"><button class="who-btn" data-act="profile" data-uid="${h(p.author)}">${av(p.author,34)}<b>${h(nm(p.author))}</b></button>${p.caption?`<p class="cap">${h(str(p.caption,300))}</p>`:''}<span class="time">${ago(p.at)}</span></div>`;
   updateReel(el,p); if(reelIO) reelIO.observe(el); return el;
 }
@@ -2031,7 +2059,7 @@ function renderReels(){
     reelIO=new IntersectionObserver(es=>es.forEach(en=>{ const v=en.target.querySelector('video'); if(!v) return; if(en.intersectionRatio>.6&&S.tab==='reels'&&!S.stack.length){ v.muted=S.muted; v.play().then(()=>en.target.classList.remove('paused')).catch(()=>{}); } else v.pause(); }),{root:$('#reelList'),threshold:[0,.6,1]});
     $('#reelList').addEventListener('click',e=>{ if(e.target.tagName!=='VIDEO') return; const v=e.target; const r=v.closest('.reel'); if(v.paused){ v.muted=S.muted; v.play().then(()=>r.classList.remove('paused')).catch(()=>{}); } else { v.pause(); r.classList.add('paused'); } });
   }
-  const reels=okPosts().filter(p=>p.kind==='reel');
+  const reels=seenPosts().filter(p=>p.kind==='reel');
   syncKeyed($('#reelList'),reels,reelEls,reelEl,updateReel);
   $('#reelEmpty').innerHTML=reels.length?'':`<div class="reel-empty"><div class="empty"><div class="lens sm"></div><h3>Még nincs reel</h3><p>Vegyél fel egy rövid, függőleges videót. A Reels itt görgethető, egyik a másik után.</p><button class="btn" data-act="camera" data-mode="reel">${ic('video')}Reel felvétele</button></div></div>`;
 }
@@ -2118,7 +2146,7 @@ function L_comments(pid){
   const L={type:'comments',el,refresh(){
     const p=S.posts.find(x=>x.id===pid);
     if(!p){ list.innerHTML='<div class="empty slim"><p>Ez a poszt már nem elérhető.</p></div>'; return; }
-    const cs=cmts(p); el.querySelector('#ch').textContent=cs.length?cs.length+' hozzászólás':'Hozzászólások';
+    const cs=cmts(p).filter(c=>!isBlocked(c.a)); el.querySelector('#ch').textContent=cs.length?cs.length+' hozzászólás':'Hozzászólások';
     const ids=new Set(cs.map(c=>c.id)); const top=cs.filter(c=>!(typeof c.p==='string'&&ids.has(c.p)));
     list.innerHTML=cs.length?top.map(c=>row(c,false,p)+cs.filter(x=>x.p===c.id).map(x=>row(x,true,p)).join('')).join(''):'<div class="empty slim"><h3>Még nincs hozzászólás</h3><p>Írd meg az elsőt, vagy dobj be egy emojit.</p></div>';
     if(scrollEnd){ list.scrollTop=list.scrollHeight; scrollEnd=false; }
@@ -2160,13 +2188,14 @@ function L_profile(uid){
   el.addEventListener('click',e=>{ const b=e.target.closest('[data-ptab]'); if(b){ tab=b.dataset.ptab; L.refresh(); } });
   const L={type:'profile',el,refresh(){
     el.querySelector('#ph').textContent=handleOf(uid)?'@'+handleOf(uid):nm(uid);
+    if(!own&&isBlocked(uid)){ el.querySelector('#pb').innerHTML=`<div class="empty"><h3>Letiltottad ezt a felhasználót</h3><p>A posztjai, hozzászólásai és üzenetei nem jelennek meg neked.</p><button class="btn" data-act="unblock" data-uid="${h(uid)}">Tiltás feloldása</button></div>`; return; }
     const ps=okPosts().filter(p=>p.author===uid); const all=ranking(0,null); const idx=all.findIndex(r=>r.id===uid); const me=all[idx]||{likes:0};
     const bio=str((S.people[uid]||{}).bio,160); const gs=S.groups.filter(g=>members(g).includes(uid));
     const ro=rankOf(uid); const pct=ro.next?Math.max(4,Math.min(100,(ro.avg-ro.r.min)/(ro.next.min-ro.r.min)*100)):100; const need=ro.next?Math.max(1,Math.ceil(ro.next.min*7-ro.n)):0;
     const list=ps.filter(p=>tab==='reels'?p.kind==='reel':p.kind!=='reel');
     el.querySelector('#pb').innerHTML=`<section class="ig-top">${av(uid,86)}<div class="ig-stats"><div><b>${ps.length}</b><span>Posztok</span></div><div><b>${me.likes}</b><span>Like</span></div><div><b>${idx>=0&&me.likes>0?'#'+(idx+1):'–'}</b><span>Helyezés</span></div></div></section>
     <section class="ig-info"><b class="ig-name">${h(nm(uid))}</b>${bio?`<p class="ig-bio">${h(bio)}</p>`:(own?'<p class="ig-bio dim">Még nincs bemutatkozásod.</p>':'')}${gs.length?`<div class="ig-groups">${gs.map(g=>`<button class="chip" data-act="group" data-gid="${h(g.id)}">${h(str(g.name,40))}</button>`).join('')}</div>`:''}</section>
-    <div class="ig-btns">${own?`<button class="btn sm ghost" data-act="editprof">Profil szerkesztése</button><button class="btn sm ghost" data-act="shareprof">Profil megosztása</button>`:`<button class="btn sm" data-act="dm" data-uid="${h(uid)}">Üzenet</button><button class="btn sm ghost" data-act="shareprof" data-uid="${h(uid)}">Profil megosztása</button>`}</div>
+    <div class="ig-btns">${own?`<button class="btn sm ghost" data-act="editprof">Profil szerkesztése</button><button class="btn sm ghost" data-act="shareprof">Profil megosztása</button>`:`<button class="btn sm" data-act="dm" data-uid="${h(uid)}">Üzenet</button><button class="btn sm ghost" data-act="shareprof" data-uid="${h(uid)}">Profil megosztása</button><button class="btn sm ghost" data-act="block" data-uid="${h(uid)}" aria-label="Letiltás">${ic('more')}</button>`}</div>
     <button class="rank-card" data-act="ranks" data-uid="${h(uid)}" style="--rc:${ro.r.c}"><span class="rc-top"><span class="rank-b" data-noi18n>${ro.r.n}</span><span class="rc-avg"><span>${fmtAvg(ro.avg)} poszt/nap</span> · <span>${ro.today} ma</span></span></span><span class="rc-bar"><i style="width:${pct}%"></i></span><span class="rc-sub">${ro.next?`<span>Következő:</span> <b data-noi18n>${ro.next.n}</b> <span>· még ${need} poszt kell</span>`:'<span>Elérted a legmagasabb rangot!</span>'}</span></button>
     ${rewardsRow(uid,own)}
     ${rankBadgesRow(uid,own)}
@@ -2192,7 +2221,7 @@ function L_group(gid){
     const g=groupById(gid); const box=el.querySelector('#gb');
     if(!g){ box.innerHTML='<div class="empty"><h3>Ez a csoport már nem létezik</h3></div>'; return; }
     el.querySelector('.l-head h2').textContent=str(g.name,40);
-    const mem=members(g); const mine=isMember(g); const ps=okPosts().filter(p=>p.group===gid);
+    const mem=members(g); const mine=isMember(g); const ps=seenPosts().filter(p=>p.group===gid);
     const ci=Number.isInteger(g.color)?Math.abs(g.color)%GC.length:0;
     const ranks=ranking(periodStart('week'),mem).filter(r=>r.likes>0).slice(0,5);
     box.innerHTML=`<div class="ghero" style="--gc:${GC[ci]}">${gbadge(g,64)}<h3>${h(str(g.name,40))}</h3>${g.about?`<p>${h(str(g.about,140))}</p>`:''}<p class="small dim">${mem.length} tag${typeof g.createdBy==='string'?' · alapította: '+h(nm(g.createdBy)):''}</p>
@@ -2221,7 +2250,7 @@ function L_newgroup(){
 function L_chats(){
   const el=mkLayer(head('Üzenetek',`<button class="icon-btn" data-act="newdm" aria-label="Új üzenet">${ic('edit')}</button>`)+'<div class="l-body" id="chl"></div>');
   return {type:'chats',el,refresh(){
-    const list=myChats(); const box=el.querySelector('#chl');
+    const list=myChats().filter(({cid})=>!(cid.indexOf('d_')===0&&cid.slice(2).split('~').some(isBlocked))); const box=el.querySelector('#chl');
     if(!list.length){ box.innerHTML=`<div class="empty"><h3>Még nincs beszélgetés</h3><p>Írj valakinek, vagy csatlakozz egy csoporthoz: minden csoportnak saját chatje van.</p><button class="btn" data-act="newdm">${ic('edit')}Új üzenet</button></div>`; return; }
     box.innerHTML=list.map(({cid,m})=>{ const info=chatInfo(cid); const last=m&&m.last; const un=unread(cid);
       const prev=last?((last.a===S.uid?'Te: ':(info.kind==='g'?nm(last.a)+': ':''))+(last.img&&!last.t?'Fotót küldött':str(last.t,80))):'Még nincs üzenet';
@@ -2463,7 +2492,7 @@ function showOnb(step){
   onbEl.dataset.step=step; const has=!!handleOf(S.uid); let html='';
   if(step==='lang') html=`<div class="auth"><div class="auth-in">${onbLogo}<h1 data-noi18n>Válassz nyelvet<br><span>Choose your language</span></h1><div class="langs"><button class="lang" data-lang="hu" data-noi18n><b>Magyar</b><small>Hungarian</small></button><button class="lang" data-lang="en" data-noi18n><b>English</b><small>Angol</small></button></div><p class="small dim" data-noi18n>Később a beállításokban módosíthatod. · You can change it later in Settings.</p></div></div>`;
   else if(step==='loading') html=`<div class="auth"><div class="auth-in center">${onbLogo}<div class="spin" role="status" aria-label="Betöltés"></div></div></div>`;
-  else if(step==='welcome') html=onbShell(`<div class="auth-hero">${onbLogo}<p class="auth-tag">Oszd meg a nap nagy pillanatait. Like-ok, reelek, rangok és érmek.</p></div><div class="auth-actions"><button class="btn wide xl" data-onb="signup">Regisztráció</button><button class="btn ghost wide xl" data-onb="login">Bejelentkezés</button></div>`,{foot:`<div class="auth-foot"><button class="link-b" data-onb="switchlang" data-noi18n>${LANG==='en'?'Magyar':'English'}</button></div>`});
+  else if(step==='welcome') html=onbShell(`<div class="auth-hero">${onbLogo}<p class="auth-tag">Oszd meg a nap nagy pillanatait. Like-ok, reelek, rangok és érmek.</p></div><div class="auth-actions"><button class="btn wide xl" data-onb="signup">Regisztráció</button><button class="btn ghost wide xl" data-onb="login">Bejelentkezés</button><p class="small dim center legal-note">A regisztrációval elfogadod a <a href="${LEGAL}feltetelek.html" target="_blank" rel="noopener">Felhasználási feltételeket</a> és az <a href="${LEGAL}adatvedelem.html" target="_blank" rel="noopener">Adatvédelmi tájékoztatót</a>. Csak 16 éven felülieknek.</p></div>`,{foot:`<div class="auth-foot"><button class="link-b" data-onb="switchlang" data-noi18n>${LANG==='en'?'Magyar':'English'}</button></div>`});
   else if(step==='login'&&S.server) html=onbShell(`${onbLogo}<h1>Bejelentkezés</h1><form class="auth-form" id="lgf" novalidate><input class="field big" id="lge" type="email" autocomplete="email" inputmode="email" autocapitalize="off" placeholder="E-mail-cím" aria-label="E-mail-cím"><input class="field big" id="lgp" type="password" autocomplete="current-password" placeholder="Jelszó" aria-label="Jelszó"><p class="hint bad" id="lgerr" hidden></p><button class="btn wide xl" id="lgbtn">Bejelentkezés</button><button type="button" class="link-b center" data-onb="forgot">Elfelejtetted a jelszavad?</button></form>`,{back:'welcome',foot:`<div class="auth-foot"><span class="muted">Nincs még fiókod?</span><button class="link-b" data-onb="signup">Regisztráció</button></div>`});
   else if(step==='account') html=onbShell(`<form class="auth-form" id="acf" novalidate><p class="auth-step">Fiók létrehozása</p><h1>Add meg az e-mail-címed</h1><p class="muted">Ezzel tudsz majd bejelentkezni bármelyik eszközön.</p><input class="field big" id="ace" type="email" autocomplete="email" inputmode="email" autocapitalize="off" placeholder="E-mail-cím" aria-label="E-mail-cím"><input class="field big" id="acp" type="password" autocomplete="new-password" placeholder="Jelszó (legalább 8 karakter)" aria-label="Jelszó"><p class="hint bad" id="acerr" hidden></p><button class="btn wide xl" id="acbtn">Tovább</button></form>`,{back:'welcome',foot:`<div class="auth-foot"><span class="muted">Van már fiókod?</span><button class="link-b" data-onb="login">Bejelentkezés</button></div>`});
   else if(step==='confirm') html=onbShell(`${onbLogo}<h1>Erősítsd meg az e-mail-címed</h1><p class="muted">Küldtünk egy levelet a megadott címre. Kattints a benne lévő linkre, aztán jelentkezz be.</p><button class="btn wide xl" data-onb="login">Bejelentkezés</button>`,{back:'welcome'});
@@ -2675,7 +2704,7 @@ Object.assign(EN,{
  'Elérted a legmagasabb rangot!':'You’ve reached the top rank!','Következő:':'Next:','7 napos átlag':'7-day average','ma':'today','Profil megosztása':'Share profile','Felhasználónév másolva':'Username copied'
 });
 Object.assign(EN,{"1. hely":"1st place","2. hely":"2nd place","3. hely":"3rd place","Top 10":"Top 10","Jelenlegi helyezés az összesített ranglistán":"Current standing on the all-time leaderboard","Még nincs érem.":"No awards yet.","Az érmek a lezárt napok, hetek, hónapok és évek helyezéseiért járnak: arany az 1., ezüst a 2., bronz a 3. helyért, és külön jelvény a top 10-ért. Minél hosszabb az időszak, annál díszesebb az érem.":"Awards come from placements on finished days, weeks, months and years: gold for 1st, silver for 2nd, bronze for 3rd, and a badge for the top 10. The longer the period, the fancier the award.","Kerülj a top 10-be egy napon, héten vagy hónapon, és itt jelenik meg az érmed.":"Reach the top 10 on a day, week or month and your award shows up here.","Gratulálunk!":"Congratulations!","Megnézem a profilomon":"View on my profile","A te helyezésed":"Your position","A lista a top 10-et mutatja. Amikor egy nap, hét, hónap vagy év lezárul, az első három helyezett arany, ezüst és bronz érmet kap a profiljára, a top 10 többi tagja pedig Top 10 jelvényt.":"The list shows the top 10. When a day, week, month or year ends, the top three get gold, silver and bronze awards on their profile, and the rest of the top 10 get a Top 10 badge."});
-Object.assign(EN,{"Ezen a képen nem látok kakit":"I can't see any poop in this picture","Ezen a videón nem látok kakit":"I can't see any poop in this video","Csak olyan kép mehet fel, amin látszik. Bármilyen állaté lehet.":"Only pictures that show it can go up. Any animal's will do.","Fotózd közelebbről és jó fényben, hogy jól kivehető legyen.":"Shoot closer and in good light so it is easy to make out.","Vécében készült: beleszámít a rangodba.":"Taken in a toilet: it counts for your rank.","Nem vécében készült: felmegy, de nem számít a rangodba.":"Not taken in a toilet: it goes up but does not count for your rank.","Állati":"Animal","Helyezések":"Placements","Heti rangjelvények":"Weekly rank badges","Heti rang":"Weekly rank","Minden hét végén megkapod az adott heti rangod jelvényét. Az első a hét lezárása után jelenik meg itt.":"At the end of every week you get the badge of that week's rank. The first one shows up here once the week is closed.","Minden hét végén mindenki megkapja az adott heti rangja jelvényét, a hét posztjai alapján. Ha ugyanazt a rangot többször szerzed meg, a jelvényen ×2, ×3 jelzi. Amelyik héten nem posztolsz, arra a Constipated jelvény jár.":"At the end of every week everyone gets the badge of that week's rank, based on the week's posts. If you earn the same rank again, the badge shows ×2, ×3. A week without a post earns the Constipated badge.","Megjött a heti rangod!":"Your weekly rank is here!","A kamera nem érhető el":"The camera is not available","A kamera nem érhető el.":"The camera is not available.","Posztolni csak az app saját kamerájával lehet. Engedélyezd a kamerát, aztán próbáld újra.":"You can only post with the app's own camera. Allow the camera, then try again.","Kamera indítása…":"Starting the camera…","A felvétel ezen az eszközön nem működik.":"Recording does not work on this device.","Még egy kép":"One more photo","Még egy":"One more","Vissza a poszthoz":"Back to the post","Ez ugyanaz az alkalom":"This is the same occasion","1 percen belül készült egy korábbi képeddel.":"It was taken within a minute of one of your earlier pictures.","Egy alkalomról csak egy poszt mehet fel. Ami egy percen belül készül, azt ugyanannak az alkalomnak vesszük. Több képet egy posztba tehetsz.":"Only one post can go up per occasion. Anything taken within a minute counts as the same occasion. You can put several pictures into one post.","A két kép 10 percen belül készült, ilyenkor szigorúbb a vizsgálat.":"The two pictures were taken within 10 minutes, so the check is stricter.","Ez a kép már fent van":"This photo is already posted","Ez a videó már fent van":"This video is already posted","már posztolta":"already posted it","Minden képet és videót csak egyszer lehet feltölteni. Készíts egy újat!":"Every photo and video can only be uploaded once. Take a new one!","Eredeti poszt megnyitása":"Open the original post","Rendben":"OK","Ez a kép már benne van a posztban.":"This photo is already in the post.","1 kép már fent van, ezt kihagytam.":"1 photo is already posted, so I skipped it."});
+Object.assign(EN,{"A fióktörlés a szerveren még nincs bekapcsolva. Próbáld később.":"Account deletion is not switched on on the server yet. Try again later.","Továbbiak":"More","Bejelentés":"Report","Letiltás:":"Block:","Letiltás":"Block","Törlés moderátorként":"Delete as moderator","Mégse":"Cancel","Mi a baj ezzel a poszttal? A moderátor megnézi, és ha kell, törli. A bejelentő nevét a szerző nem látja.":"What is wrong with this post? A moderator looks at it and removes it if needed. The author does not see who reported it.","Nincs rajta kaki":"There is no poop in it","Ismételt vagy lopott kép":"Repeated or stolen picture","Ember vagy intim testrész látszik rajta":"A person or private body part is visible","Sértő vagy illegális tartalom":"Offensive or illegal content","Spam vagy reklám":"Spam or advertising","Bejelentve. A posztot elrejtettük előled.":"Reported. We hid the post from you.","Letiltva. Nem látod többé a posztjait és üzeneteit.":"Blocked. You won't see their posts and messages any more.","Tiltás feloldva":"Unblocked","Biztosan letiltod? Koppints újra":"Block them? Tap again","Letiltott felhasználók":"Blocked people","Feloldás":"Unblock","Senkit nem tiltottál le.":"You haven't blocked anyone.","Letiltottad ezt a felhasználót":"You blocked this person","A posztjai, hozzászólásai és üzenetei nem jelennek meg neked.":"Their posts, comments and messages don't show up for you.","Tiltás feloldása":"Unblock","Bejelentések":"Reports","Nincs bejelentés":"No reports","Amit a felhasználók bejelentenek, itt jelenik meg.":"What people report shows up here.","A bejelentések nem érhetők el.":"Reports are not available.","Poszt törlése":"Delete post","Elvetés":"Dismiss","Biztosan törlöd? Koppints újra":"Delete it? Tap again","törölve":"deleted","Fiók törlése":"Delete account","Végleges törlés":"Delete for good","Biztos? Koppints újra":"Sure? Tap again","Törlés…":"Deleting…","A fiókod törölve.":"Your account is deleted.","Nem sikerült törölni. Próbáld újra később.":"Could not delete. Try again later.","A csevegésekben elküldött üzeneteid megmaradnak a többiek beszélgetéseiben.":"Messages you sent stay in the other people's chats.","Felhasználási feltételek":"Terms of use","Adatvédelmi tájékoztató":"Privacy notice","Ezen a képen nem látok kakit":"I can't see any poop in this picture","Ezen a videón nem látok kakit":"I can't see any poop in this video","Csak olyan kép mehet fel, amin látszik. Bármilyen állaté lehet.":"Only pictures that show it can go up. Any animal's will do.","Fotózd közelebbről és jó fényben, hogy jól kivehető legyen.":"Shoot closer and in good light so it is easy to make out.","Vécében készült: beleszámít a rangodba.":"Taken in a toilet: it counts for your rank.","Nem vécében készült: felmegy, de nem számít a rangodba.":"Not taken in a toilet: it goes up but does not count for your rank.","Állati":"Animal","Helyezések":"Placements","Heti rangjelvények":"Weekly rank badges","Heti rang":"Weekly rank","Minden hét végén megkapod az adott heti rangod jelvényét. Az első a hét lezárása után jelenik meg itt.":"At the end of every week you get the badge of that week's rank. The first one shows up here once the week is closed.","Minden hét végén mindenki megkapja az adott heti rangja jelvényét, a hét posztjai alapján. Ha ugyanazt a rangot többször szerzed meg, a jelvényen ×2, ×3 jelzi. Amelyik héten nem posztolsz, arra a Constipated jelvény jár.":"At the end of every week everyone gets the badge of that week's rank, based on the week's posts. If you earn the same rank again, the badge shows ×2, ×3. A week without a post earns the Constipated badge.","Megjött a heti rangod!":"Your weekly rank is here!","A kamera nem érhető el":"The camera is not available","A kamera nem érhető el.":"The camera is not available.","Posztolni csak az app saját kamerájával lehet. Engedélyezd a kamerát, aztán próbáld újra.":"You can only post with the app's own camera. Allow the camera, then try again.","Kamera indítása…":"Starting the camera…","A felvétel ezen az eszközön nem működik.":"Recording does not work on this device.","Még egy kép":"One more photo","Még egy":"One more","Vissza a poszthoz":"Back to the post","Ez ugyanaz az alkalom":"This is the same occasion","1 percen belül készült egy korábbi képeddel.":"It was taken within a minute of one of your earlier pictures.","Egy alkalomról csak egy poszt mehet fel. Ami egy percen belül készül, azt ugyanannak az alkalomnak vesszük. Több képet egy posztba tehetsz.":"Only one post can go up per occasion. Anything taken within a minute counts as the same occasion. You can put several pictures into one post.","A két kép 10 percen belül készült, ilyenkor szigorúbb a vizsgálat.":"The two pictures were taken within 10 minutes, so the check is stricter.","Ez a kép már fent van":"This photo is already posted","Ez a videó már fent van":"This video is already posted","már posztolta":"already posted it","Minden képet és videót csak egyszer lehet feltölteni. Készíts egy újat!":"Every photo and video can only be uploaded once. Take a new one!","Eredeti poszt megnyitása":"Open the original post","Rendben":"OK","Ez a kép már benne van a posztban.":"This photo is already in the post.","1 kép már fent van, ezt kihagytam.":"1 photo is already posted, so I skipped it."});
 RULES.push([/^(\d+) kép már fent van, ezeket kihagytam\.$/,(m,a)=>a+' photos are already posted, so I skipped them.'],[/^(\d+) kép már benne van a posztban\.$/,(m,a)=>a+' photos are already in the post.']);
 Object.assign(EN,{"Ellenőrzés…":"Checking…","Ez túl hasonló egy korábbi poszthoz":"Too similar to an earlier post","Az AI szerint ugyanazt a kakit fotóztad le újra, csak másképp. Minden darab csak egyszer mehet fel.":"The AI thinks you photographed the same poop again, just differently. Each one can only go up once."});
 Object.assign(EN,{"alak- és mintázategyezés":"shape and texture match","korábbi poszt":"earlier post","az új kép":"the new photo","fedik egymást":"they overlap","A felismerő szerint ugyanazt fotóztad le újra, csak másképp. Minden darab csak egyszer mehet fel.":"The recognizer thinks you photographed the same one again, just differently. Each one can only go up once.","Egyezés-teszt":"Match test","Válassz két fotót. Megmutatom, mit vág ki belőlük a felismerő (narancssárgával), és mennyire tartja őket ugyanannak.":"Pick two photos. I show what the recognizer cuts out of them (in orange) and how alike it finds them.","1. fotó kiválasztása":"Choose photo 1","2. fotó kiválasztása":"Choose photo 2","1. fotó: téma megtalálva":"Photo 1: subject found","2. fotó: téma megtalálva":"Photo 2: subject found","1. fotó: nincs barna téma":"Photo 1: no brown subject","2. fotó: nincs barna téma":"Photo 2: no brown subject","1. fotó":"Photo 1","2. fotó":"Photo 2","Az egyik képen nem találtam barna témát, ezért nem tudok összehasonlítani.":"I found no brown subject in one of the photos, so I cannot compare them.","Nem sikerült az összehasonlítás.":"The comparison failed.","Ismétlésnek venném, és tiltanám.":"I would treat this as a repeat and block it.","Hasonló, de átengedném.":"Similar, but I would let it through.","Különbözőnek látom, átengedném.":"I see them as different and would let it through.","Alak fedése":"Shape overlap","Felszíni mintázat":"Surface pattern","Tiltási küszöb":"Blocking threshold","Az egyik képen a téma kilóg a képből, ilyenkor a felismerő kevésbé megbízható.":"In one photo the subject runs out of the frame, which makes the recognizer less reliable."});
@@ -2719,11 +2748,85 @@ function L_matchtest(){
       const pm=shapePrep(img); st[i]={img,pm}; drawSlot(b.querySelector('canvas'),img,pm); b.querySelector('span').textContent=pm?(i+1)+'. fotó: téma megtalálva':(i+1)+'. fotó: nincs barna téma'; result(); }catch{ toast('Ezt a képet nem sikerült megnyitni.'); } }); });
   return {type:'matchtest',el};
 }
+/* ---------- safety sheets ---------- */
+function L_postmenu(pid){
+  const p=S.posts.find(x=>x.id===pid); if(!p) return {type:'postmenu',el:mkSheet('<div class="grab"></div><p class="muted center">Ez a poszt már nem elérhető.</p>')};
+  const el=mkSheet(`<div class="grab"></div><div class="menu-list"><button class="btn ghost wide" data-act="report" data-pid="${h(pid)}">${ic('flag')}Bejelentés</button><button class="btn ghost wide" data-act="block" data-uid="${h(p.author)}"><span>Letiltás:</span> <b data-noi18n>${h(nm(p.author))}</b></button>${S.isOwner?`<button class="btn ghost wide danger" data-act="moddel" data-pid="${h(pid)}">${ic('trash')}Törlés moderátorként</button>`:''}<button class="link-b center" data-act="back">Mégse</button></div>`);
+  return {type:'postmenu',el};
+}
+const REASONS=['Nincs rajta kaki','Ismételt vagy lopott kép','Ember vagy intim testrész látszik rajta','Sértő vagy illegális tartalom','Spam vagy reklám'];
+function L_report(pid){
+  const el=mkSheet(`<div class="grab"></div><div class="l-head"><h2>Bejelentés</h2><button class="icon-btn" data-act="back" aria-label="Bezárás">${ic('close')}</button></div><div class="sheet-form"><p class="muted">Mi a baj ezzel a poszttal? A moderátor megnézi, és ha kell, törli. A bejelentő nevét a szerző nem látja.</p>${REASONS.map((r,i)=>`<button class="btn ghost wide" data-act="sendreport" data-pid="${h(pid)}" data-r="${i}">${r}</button>`).join('')}</div>`);
+  return {type:'report',el};
+}
+async function sendReport(pid,i){
+  const p=S.posts.find(x=>x.id===pid); if(!p) return;
+  const ok=await w(()=>S.db.collection('reports').add({post:pid,author:p.author,by:S.uid,reason:REASONS[i]||'',at:now()}));
+  if(!ok) return; HIDDEN.add(pid); try{ localStorage.setItem('pz_hidden',JSON.stringify([...HIDDEN].slice(-500))); }catch{}
+  closeAll(); toast('Bejelentve. A posztot elrejtettük előled.');
+}
+async function setBlocked(uid,on){
+  if(!uid||uid===S.uid) return;
+  const ok=await w(()=>S.db.doc('people/'+S.uid).update({blocked:{[uid]:on?now():0}}));
+  if(!ok) return; closeAll(); toast(on?'Letiltva. Nem látod többé a posztjait és üzeneteit.':'Tiltás feloldva');
+}
+function L_blocked(){
+  const ids=Object.entries(blockedMap()).filter(([,v])=>v).map(([k])=>k);
+  const el=mkSheet(`<div class="grab"></div><div class="l-head"><h2>Letiltott felhasználók</h2><button class="icon-btn" data-act="back" aria-label="Bezárás">${ic('close')}</button></div><div class="sheet-form">${ids.length?ids.map(id=>`<div class="blk-row">${av(id,36)}<b data-noi18n>${h(nm(id))}</b><button class="btn sm ghost" data-act="unblock" data-uid="${h(id)}">Feloldás</button></div>`).join(''):'<p class="muted">Senkit nem tiltottál le.</p>'}</div>`);
+  return {type:'blocked',el};
+}
+function L_delacct(){
+  const el=mkSheet(`<div class="grab"></div><div class="won dup"><h2>Fiók törlése</h2><p class="muted">Törlődik a profilod, minden posztod és reeled a képekkel együtt${S.server?', és a bejelentkezésed is':''}. Ez nem vonható vissza.</p><p class="small dim">A csevegésekben elküldött üzeneteid megmaradnak a többiek beszélgetéseiben.</p><button class="btn wide xl danger-fill" data-act="delacct2">Végleges törlés</button><button class="link-b center" data-act="back">Mégse</button></div>`);
+  return {type:'delacct',el};
+}
+let deleting=false;
+async function deleteAccount(btn){
+  if(deleting||!S.uid) return;
+  if(btn&&!btn.dataset.confirm){ btn.dataset.confirm='1'; btn.textContent='Biztos? Koppints újra'; return; }
+  if(S.server&&S.auth&&S.auth.canDelete&&!(await S.auth.canDelete())){ toast('A fióktörlés a szerveren még nincs bekapcsolva. Próbáld később.'); return; }
+  deleting=true; if(btn){ btn.disabled=true; btn.textContent='Törlés…'; }
+  try{
+    for(const p of okPosts().filter(x=>x.author===S.uid)){
+      try{ await S.db.doc('posts/'+p.id).delete(); unindexPrints(p); }catch(e){ console.warn(e); }
+      if(S.assets) for(const a of new Set([p.asset,...postAssets(p)])) if(isAsset(a)) await S.assets.delete(a).catch(()=>{});
+    }
+    const avatar=(S.people[S.uid]||{}).avatar; if(isAsset(avatar)&&S.assets) await S.assets.delete(avatar).catch(()=>{});
+    try{ await S.db.doc('people/'+S.uid).delete(); }catch(e){ console.warn(e); }
+    if(S.server&&S.auth&&S.auth.deleteMe) await S.auth.deleteMe();
+    try{ for(const k of ['pz_aw_','pz_wk_']) localStorage.removeItem(k+S.uid); localStorage.removeItem('pz_hidden'); }catch{}
+    toast('A fiókod törölve.');
+    if(S.server){ setSession(false); setTimeout(()=>location.reload(),900); return; }
+    deleting=false; logout();
+  }catch(e){ console.warn(e); deleting=false; if(btn){ btn.disabled=false; btn.textContent='Végleges törlés'; delete btn.dataset.confirm; } toast('Nem sikerült törölni. Próbáld újra később.'); }
+}
+/* moderation: reported posts, for the moderators (the claude.ai owner, or an account in the server's admins table) */
+function L_reports(){
+  let list=[], unsub=null;
+  const el=mkLayer(head('Bejelentések')+'<div class="l-body" id="rpl"></div>');
+  const draw=()=>{ const box=el.querySelector('#rpl'), by={};
+    for(const r of list){ const k=r.post; if(typeof k!=='string') continue; (by[k]=by[k]||[]).push(r); }
+    const keys=Object.keys(by).sort((a,b)=>Math.max(...by[b].map(r=>r.at||0))-Math.max(...by[a].map(r=>r.at||0)));
+    box.innerHTML=keys.length?keys.map(pid=>{ const p=S.posts.find(x=>x.id===pid), rs=by[pid], why={}; rs.forEach(r=>{ why[r.reason]=(why[r.reason]||0)+1; });
+      const thumb=p&&validPost(p)?(p.kind==='reel'?`<video src="${blobUrl(p.asset)}#t=0.1" muted playsinline preload="metadata"></video>`:`<img src="${blobUrl(postAssets(p)[0])}" alt="">`):'<span class="dim small">törölve</span>';
+      return `<div class="rep-row"><div class="rep-th">${thumb}</div><div class="rep-mid"><b data-noi18n>${p?h(nm(p.author)):''}</b><span class="small">${Object.entries(why).map(([k,n])=>h(k)+(n>1?' ×'+n:'')).join(' · ')}</span><span class="small dim">${rs.length} bejelentés · ${ago(Math.max(...rs.map(r=>r.at||0)))}</span>
+        <span class="rep-btns">${p?`<button class="btn sm danger-fill" data-act="moddel" data-pid="${h(pid)}">Poszt törlése</button>`:''}<button class="btn sm ghost" data-act="dismiss" data-pid="${h(pid)}">Elvetés</button></span></div></div>`; }).join(''):'<div class="empty"><h3>Nincs bejelentés</h3><p>Amit a felhasználók bejelentenek, itt jelenik meg.</p></div>';
+  };
+  try{ unsub=S.db.collection('reports').onSnapshot(s=>{ list=s.docs.map(d=>({id:d.id,...(d.data()||{})})); draw(); },()=>{ el.querySelector('#rpl').innerHTML='<div class="empty"><p>A bejelentések nem érhetők el.</p></div>'; }); }catch(e){ console.warn(e); }
+  draw();
+  return {type:'reports',el,close(){ if(typeof unsub==='function') unsub(); },clear:async pid=>{ for(const r of list.filter(x=>x.post===pid)) await S.db.doc('reports/'+r.id).delete().catch(()=>{}); }};
+}
+async function modDelete(pid){
+  await deletePost(pid);
+  const L=S.stack.find(x=>x.type==='reports'); if(L&&L.clear) await L.clear(pid);
+  const top=S.stack[S.stack.length-1]; if(top&&top.type==='postmenu') popLayer();
+}
 function L_settings(){
   const el=mkSheet(`<div class="grab"></div><div class="l-head"><h2>Beállítások</h2><button class="icon-btn" data-act="back" aria-label="Bezárás">${ic('close')}</button></div>
   <div class="sheet-form"><div class="lbl">Nyelv<div class="seg" role="group" aria-label="Nyelv"><button data-set="lang" data-v="hu" aria-pressed="${LANG!=='en'}" data-noi18n>Magyar</button><button data-set="lang" data-v="en" aria-pressed="${LANG==='en'}" data-noi18n>English</button></div></div>
   <div class="lbl">Téma<div class="seg" role="group" aria-label="Téma"><button data-set="theme" data-v="auto" aria-pressed="${theme==='auto'}">Automatikus</button><button data-set="theme" data-v="light" aria-pressed="${theme==='light'}">Világos</button><button data-set="theme" data-v="dark" aria-pressed="${theme==='dark'}">Sötét</button></div></div>
-  <button class="btn ghost wide" data-act="editprof">${ic('edit')}Profil szerkesztése</button><button class="btn ghost wide" data-act="matchtest">${ic('stack')}Egyezés-teszt</button><button class="btn ghost wide danger" data-act="logout">Kijelentkezés</button><p class="small dim">${S.server?'<span>Bejelentkezve:</span> <span data-noi18n>'+h(S.auth?S.auth.email():'')+'</span>':S.local?'Az adataid egyelőre csak ezen az eszközön tárolódnak. A közös hírfolyamhoz és a chathez szerver kell, az még nincs bekötve.':'Bejelentkezve a claude.ai fiókoddal.'}</p></div>`);
+  <button class="btn ghost wide" data-act="editprof">${ic('edit')}Profil szerkesztése</button><button class="btn ghost wide" data-act="matchtest">${ic('stack')}Egyezés-teszt</button>${Object.values(blockedMap()).some(Boolean)?`<button class="btn ghost wide" data-act="blocked">Letiltott felhasználók</button>`:''}${S.isOwner?`<button class="btn ghost wide" data-act="reports">${ic('flag')}Bejelentések</button>`:''}<button class="btn ghost wide danger" data-act="logout">Kijelentkezés</button>
+  <div class="legal-links"><a href="${LEGAL}feltetelek.html" target="_blank" rel="noopener">Felhasználási feltételek</a><a href="${LEGAL}adatvedelem.html" target="_blank" rel="noopener">Adatvédelmi tájékoztató</a></div>
+  <button class="link-b center danger" data-act="delacct">Fiók törlése</button><p class="small dim">${S.server?'<span>Bejelentkezve:</span> <span data-noi18n>'+h(S.auth?S.auth.email():'')+'</span>':S.local?'Az adataid egyelőre csak ezen az eszközön tárolódnak. A közös hírfolyamhoz és a chathez szerver kell, az még nincs bekötve.':'Bejelentkezve a claude.ai fiókoddal.'}</p></div>`);
   el.addEventListener('click',e=>{ const b=e.target.closest('[data-set]'); if(!b) return;
     if(b.dataset.set==='lang'){ if(b.dataset.v!==(LANG||'hu')){ setLang(b.dataset.v); toast(LANG==='en'?'Language: English':'Nyelv: magyar'); } }
     else { theme=THEMES[b.dataset.v]?b.dataset.v:'auto'; try{ localStorage.setItem('pz_theme',theme); }catch{} applyTheme(); el.querySelectorAll('[data-set="theme"]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); refresh(); } });
@@ -2752,6 +2855,17 @@ const ACT={
   openpost:t=>{ const pid=pidOf(t); const go=()=>{ const p=S.posts.find(x=>x.id===pid); if(!p) return; if(p.kind==='reel') openReel(p.id); else pushLayer(L_post(p.id)); };
     if(t.classList.contains('media')){ clearTimeout(tapT); tapT=setTimeout(go,260); } else go(); },
   del:t=>askDelete(t),
+  postmenu:t=>{ const pid=pidOf(t); if(pid) pushLayer(L_postmenu(pid)); },
+  report:t=>{ const pid=t.dataset.pid; popLayer(); pushLayer(L_report(pid)); },
+  sendreport:t=>sendReport(t.dataset.pid,Number(t.dataset.r)),
+  block:t=>{ const u=t.dataset.uid; if(!u) return; if(t.dataset.confirm){ setBlocked(u,true); return; } t.dataset.confirm='1'; t.textContent='Biztosan letiltod? Koppints újra'; },
+  unblock:t=>setBlocked(t.dataset.uid,false),
+  blocked:()=>pushLayer(L_blocked()),
+  reports:()=>pushLayer(L_reports()),
+  moddel:t=>{ if(!t.dataset.confirm){ t.dataset.confirm='1'; t.textContent='Biztosan törlöd? Koppints újra'; return; } modDelete(t.dataset.pid); },
+  dismiss:async t=>{ const L=S.stack.find(x=>x.type==='reports'); if(L&&L.clear) await L.clear(t.dataset.pid); },
+  delacct:()=>pushLayer(L_delacct()),
+  delacct2:t=>deleteAccount(t),
   back:()=>popLayer(),
   join:t=>joinGroup(t.dataset.gid,true),
   leave:t=>joinGroup(t.dataset.gid,false),
