@@ -157,7 +157,9 @@ main.full{overflow:hidden}
 .handle{display:flex;align-items:center;background:var(--raise);border:1px solid var(--line);border-radius:14px;padding-left:14px}
 .handle span{color:var(--muted);font-weight:700;font-size:16px}
 .handle .field{border:0;background:transparent;padding-left:4px}
-.handle:focus-within{border-color:var(--accent)}
+/* the frame belongs to the whole "@ + name" box, so the focus ring goes around the box, not around the inner input */
+.handle:focus-within{border-color:var(--accent);outline:2px solid var(--accent-hi);outline-offset:2px}
+.handle .field:focus-visible{outline:none}
 .hint{font-weight:500;color:var(--dim);font-size:12px}
 .hint.bad{color:var(--bad)}
 .handle-t{color:var(--muted);font-weight:600;margin-top:-6px}
