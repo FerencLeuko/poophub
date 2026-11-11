@@ -285,6 +285,7 @@ main.full{overflow:hidden}
 .post-h{display:flex;align-items:center;gap:8px;padding:10px 8px 10px 12px;min-width:0}
 .who-btn{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
 .who-btn .who,.who-btn b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.wild{background:none;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted)}
 .chip{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--raise);color:var(--accent-hi);white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;flex:none}
 .time{color:var(--dim);font-size:13px;white-space:nowrap}
 .post-h .time{margin-left:auto}
@@ -514,6 +515,8 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .mode button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .edit-prev{flex:1;min-height:120px;display:grid;place-items:center;padding:10px 16px;background:var(--black)}
 .edit-prev img,.edit-prev video{max-width:100%;max-height:100%;border-radius:18px;object-fit:contain;min-height:0}
+.hu-note{margin:0;padding:8px 16px 0;font-size:13px;color:var(--muted);background:var(--black)}
+.hu-note.yes{color:var(--accent-hi)}
 .fx-strip{display:flex;gap:10px;overflow-x:auto;padding:10px 16px;scrollbar-width:none;background:var(--black)}
 .fx-strip::-webkit-scrollbar{display:none}
 .fx{flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--muted)}
@@ -747,6 +750,27 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
     for (x = 0; x < w; x++) { s = 0; c = 0; for (y = 0; y < h + r; y++) { if (y < h) { s += tmp[y * w + x]; c++; } a = y - 2 * r - 1; if (a >= 0) { s -= tmp[a * w + x]; c--; } if (y - r >= 0) f[(y - r) * w + x] = s / c; } }
   }
 
+  /* Was the photo taken in a toilet? Porcelain is bright, colourless once the lamp's tint is taken out, and smooth.
+     smooth: the share of the photo that looks like that; tint: how coloured the bright part is (0 = white). */
+  function scene(img) {
+    var w = img.width, h = img.height, d = img.data, n = w * h, lum = new Float32Array(n), hist = new Int32Array(256), i, l, acc = 0, p = 255, sr = 0, sg = 0, sb = 0, c = 0, x, y;
+    for (i = 0; i < n; i++) { lum[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) / 256; hist[lum[i] | 0]++; }
+    for (l = 255; l >= 0; l--) { acc += hist[l]; if (acc >= n * 0.3) { p = l; break; } }
+    for (i = 0; i < n; i++) if (lum[i] >= p && lum[i] < 250) { sr += d[i * 4]; sg += d[i * 4 + 1]; sb += d[i * 4 + 2]; c++; }
+    if (c < n * 0.05) return { smooth: 0, tint: 0, toilet: false }; sr /= c; sg /= c; sb /= c;
+    var tint = (Math.max(sr, sg, sb) - Math.min(sr, sg, sb)) / Math.max(sr, sg, sb, 1), gr = sg / (sr + 1), gb = sg / (sb + 1), L = 0.299 * sr * gr + 0.587 * sg + 0.114 * sb * gb, smooth = 0;
+    for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) { i = y * w + x; var r = d[i * 4] * gr, g = d[i * 4 + 1], b = d[i * 4 + 2] * gb;
+      if (0.299 * r + 0.587 * g + 0.114 * b >= 0.7 * L && Math.abs(r - b) < 0.07 * (r + g + b + 1) && Math.abs(lum[i + 1] - lum[i - 1]) + Math.abs(lum[i + w] - lum[i - w]) < 9) smooth++; }
+    smooth /= n; return { smooth: smooth, tint: tint, toilet: smooth >= 0.2 && tint <= 0.3 };
+  }
+  /* average colour of the subject: hue in degrees, saturation 0..1, brightness 0..255 */
+  function toneOf(img, seg) {
+    var d = img.data, n = seg.w * seg.h, r = 0, g = 0, b = 0, c = 0, i; for (i = 0; i < n; i++) if (seg.mask[i]) { r += d[i * 4]; g += d[i * 4 + 1]; b += d[i * 4 + 2]; c++; }
+    if (!c) return null; r /= c; g /= c; b /= c; var mx = Math.max(r, g, b), dl = mx - Math.min(r, g, b), hh = 0;
+    if (dl > 1) { hh = mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4; hh = (hh * 60 + 360) % 360; }
+    return { h: hh, s: mx ? dl / mx : 0, v: mx };
+  }
+
   /* whitening frame of a pixel set (all pieces, or one piece when id is given) */
   function frameOf(seg, id) {
     var w = seg.w, n = seg.w * seg.h, sx = 0, sy = 0, c = 0, i, x, y;
@@ -954,7 +978,7 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
   function prepare(src) { return prepareFromPixels(toPixels(src)); }
   function prepareFromPixels(img) {
     var seg = segment(img); if (!seg) return null; var whole = frameOf(seg, 0); if (!whole) return null;
-    var prep = { seg: seg, sig: signature(seg), whole: rotations(seg, whole), pieces: [] };
+    var prep = { seg: seg, sig: signature(seg), whole: rotations(seg, whole), pieces: [], tone: toneOf(img, seg) };
     prep.marks = [unpackMarks(prep.sig.k), landmarks(seg, whole, true)];
     if (seg.comps.length > 1) seg.comps.slice(0, 3).forEach(function (c) { if (c.area >= seg.area * 0.18 && !c.cut) { var f = frameOf(seg, c.id); if (f) prep.pieces.push(rotations(seg, f)); } });
     return prep;
@@ -984,7 +1008,7 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
     return { size: G, a: A.hard, b: B };
   }
 
-  root.PoopMatch = { VERSION: 2, WORK: WORK, segment: segment, toPixels: toPixels, signature: signature, prepare: prepare, prepareFromPixels: prepareFromPixels, compare: compare, overlay: overlay, G: G };
+  root.PoopMatch = { VERSION: 2, WORK: WORK, segment: segment, toPixels: toPixels, signature: signature, prepare: prepare, prepareFromPixels: prepareFromPixels, scene: scene, compare: compare, overlay: overlay, G: G };
 })(typeof window !== 'undefined' ? window : globalThis);
 /*</PoopMatch>*/
 </script>
@@ -1599,14 +1623,14 @@ function fpFromSource(src){
 }
 async function printOfImage(blob,orig){
   const url=URL.createObjectURL(blob);
-  try{ const img=new Image(); img.src=url; await img.decode(); const fp=fpFromSource(img); fp.pm=shapePrep(img); fp.f=await sha(orig||blob); return fp; }catch{ return null; } finally{ URL.revokeObjectURL(url); }
+  try{ const img=new Image(); img.src=url; await img.decode(); const fp=fpFromSource(img); fp.pm=shapePrep(img); fp.sc=sceneOf(img); fp.f=await sha(orig||blob); return fp; }catch{ return null; } finally{ URL.revokeObjectURL(url); }
 }
 async function printOfVideo(file){
   const fp={f:await sha(file)}; const url=URL.createObjectURL(file);
   try{
     const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=url;
     await new Promise((res,rej)=>{ const t=setTimeout(()=>rej(new Error('timeout')),4000); v.onloadeddata=()=>{ const to=Math.min(1,(v.duration||2)/3); v.onseeked=()=>{ clearTimeout(t); res(); }; try{ v.currentTime=to; }catch(e){ clearTimeout(t); rej(e); } }; v.onerror=()=>{ clearTimeout(t); rej(new Error('video')); }; });
-    Object.assign(fp,fpFromSource(v)); fp.pm=shapePrep(v);
+    Object.assign(fp,fpFromSource(v)); fp.pm=shapePrep(v); fp.sc=sceneOf(v);
   }catch{} finally{ URL.revokeObjectURL(url); }
   return fp.f||fp.d?fp:null;
 }
@@ -1650,6 +1674,22 @@ function unindexPrints(p){
 /* Shape check (PoopMatch, source in match.js): the same subject photographed again - rotated, tilted, zoomed, re-lit, mirrored.
    Runs entirely in the browser: no AI service, no model download. Each post image carries a 1-4 KB signature in `sg`. */
 const SHAPE_BLOCK=0.75, SHAPE_NEAR=0.65;
+/* What the picture shows, as far as the app's own recognizer can tell (no AI model):
+   - looksLikePoop: a subject was found and its colour is brownish, yellowish or dark. This stops clean toilets, blank walls and
+     things of another colour; it cannot tell a brown object from the real thing.
+   - toilet picture (sceneOf(...).toilet): a good part of the photo is smooth, bright porcelain. Posts made in a toilet count as
+     mine (human) for the rank and the weekly badges; anything else (grass, soil, street: animals) goes up but does not count. */
+function sceneOf(src){ try{ return PoopMatch.scene(PoopMatch.toPixels(src)); }catch(e){ return null; } }
+function looksLikePoop(fp){
+  const pm=fp&&fp.pm; if(!pm||!pm.seg||pm.seg.frac<0.008) return false;
+  const t=pm.tone; if(!t) return true;
+  return (t.h>=5&&t.h<=62)||(t.s<0.25&&t.v<110);
+}
+const counts=p=>p.hu!==0;
+function L_nopoop(video){
+  const el=mkSheet(`<div class="grab"></div><div class="won dup"><div class="lens sm"></div><h2>${video?'Ezen a videón nem látok kakit':'Ezen a képen nem látok kakit'}</h2><p class="muted">Csak olyan kép mehet fel, amin látszik. Bármilyen állaté lehet.</p><p class="small dim">Fotózd közelebbről és jó fényben, hogy jól kivehető legyen.</p><button class="btn wide xl" data-act="back">Rendben</button></div>`);
+  return {type:'nopoop',el};
+}
 function shapePrep(src){ try{ return PoopMatch.prepare(src); }catch(e){ console.warn('shape check skipped',e); return null; } }
 const okPack=p=>p&&typeof p.m==='string'&&p.m.length===384&&typeof p.t==='string'&&p.t.length===684;
 const sigCache=new WeakMap();
@@ -1809,7 +1849,7 @@ function renderBanner(){
 
 /* ---------- feed ---------- */
 const feedEls=new Map();
-function baseSig(p){ const g=p.group&&groupById(p.group); return [postAssets(p).join(','),p.caption,p.filter,p.kind,g?g.name:'',nm(p.author),(S.prof[p.author]||{}).avatarUrl,(S.people[p.author]||{}).avatar,S.uid,S.isOwner].join('|'); }
+function baseSig(p){ const g=p.group&&groupById(p.group); return [postAssets(p).join(','),p.caption,p.filter,p.kind,p.hu,g?g.name:'',nm(p.author),(S.prof[p.author]||{}).avatarUrl,(S.people[p.author]||{}).avatar,S.uid,S.isOwner].join('|'); }
 function mediaHTML(p,full){
   const f=h(fx(p.filter));
   if(p.kind==='reel') return `<video src="${blobUrl(p.asset)}#t=0.1" muted loop playsinline preload="metadata" style="filter:${f}"></video>`;
@@ -1824,7 +1864,7 @@ function postCard(p){
   const g=p.group&&groupById(p.group); const canDel=p.author===S.uid||S.isOwner;
   const delBtn=canDel?`<button class="icon-btn del" data-act="del" aria-label="Poszt törlése">${ic('trash')}</button>`:'';
   const media=`<div class="media" data-act="${p.kind==='reel'?'reelopen':'noop'}">${mediaHTML(p,true)}${p.kind==='reel'?`<span class="badge-reel">${ic('play')}Reel</span>`:''}<div class="burst">${ic('heart','fill')}</div></div>`;
-  el.innerHTML=`<div class="post-h"><button class="who-btn" data-act="profile" data-uid="${h(p.author)}">${av(p.author,36)}<span class="who">${h(nm(p.author))}</span></button>${g?`<button class="chip" data-act="group" data-gid="${h(g.id)}">${h(str(g.name,40))}</button>`:''}<span class="time"></span>${delBtn}</div>
+  el.innerHTML=`<div class="post-h"><button class="who-btn" data-act="profile" data-uid="${h(p.author)}">${av(p.author,36)}<span class="who">${h(nm(p.author))}</span></button>${g?`<button class="chip" data-act="group" data-gid="${h(g.id)}">${h(str(g.name,40))}</button>`:''}${counts(p)?'':'<span class="chip wild">Állati</span>'}<span class="time"></span>${delBtn}</div>
     ${media}
     <div class="post-a"><button class="icon-btn like-btn" data-act="like"></button><button class="icon-btn" data-act="comments" aria-label="Hozzászólások">${ic('comment')}</button></div>
     <div class="post-b"><b class="likes-n"></b>${p.caption?`<p class="cap"><b>${h(nm(p.author))}</b> ${h(str(p.caption))}</p>`:''}<button class="link cmt-n" data-act="comments"></button></div>`;
@@ -2201,6 +2241,7 @@ function L_camera(opts={}){
     el.innerHTML=`<div class="l-head"><button class="icon-btn" data-c="retake" aria-label="Új felvétel">${ic('back')}</button><h2>${st.kind==='reel'?'Új reel':'Új poszt'+(st.items.length>1?' · '+st.items.length+' kép':'')}</h2></div>
     <div class="edit-prev">${st.kind==='reel'?`<video src="${cur}" autoplay loop muted playsinline id="pv"></video>`:`<img src="${cur}" alt="Előnézet" id="pv">`}</div>
     ${st.kind==='photo'?`<div class="picks" role="group" aria-label="A poszt képei">${st.items.map((x,i)=>`<div class="pick" aria-current="${i===st.sel}"><button type="button" class="pk" data-c="sel" data-i="${i}" aria-label="${i+1}. kép"><img src="${x.url}" alt=""></button><button type="button" class="x" data-c="rm" data-i="${i}" aria-label="${i+1}. kép eltávolítása">×</button></div>`).join('')}${st.items.length<MAXP?`<button type="button" class="add-tile" data-c="addcam">${ic('camera')}Még egy</button>`:''}</div>`:''}
+    <p class="hu-note ${(st.kind==='reel'?st.vhu:st.items.some(x=>x.hu))?'yes':''}">${(st.kind==='reel'?st.vhu:st.items.some(x=>x.hu))?'Vécében készült: beleszámít a rangodba.':'Nem vécében készült: felmegy, de nem számít a rangodba.'}</p>
     <div class="fx-strip" role="group" aria-label="Szűrők">${Object.entries(FX).map(([k,[n,css]])=>`<button type="button" class="fx" data-c="fx" data-v="${k}" aria-pressed="${st.filter===k}">${st.kind==='reel'?`<span class="fx-sw" style="filter:${css}"></span>`:`<img src="${first}" alt="" style="filter:${css}">`}${n}</button>`).join('')}</div>
     <form class="edit-form" id="ef"><textarea class="field" id="cap" rows="2" maxlength="2200" placeholder="Írj képaláírást…"></textarea>
     <div class="row2"><select class="field" id="dest" aria-label="Hova posztolod?"><option value="">Hírfolyam (mindenki látja)</option>${myGroups.map(g=>`<option value="${h(g.id)}" ${st.group===g.id?'selected':''}>Csoport: ${h(str(g.name,40))}</option>`).join('')}</select><button class="btn" type="submit" id="sh">Megosztás</button></div></form>`;
@@ -2215,7 +2256,7 @@ function L_camera(opts={}){
     if(twice) toast(twice===1?'Ez a kép már benne van a posztban.':twice+' kép már benne van a posztban.');
     if(!add.length) return;
     stop(); if(st.kind!=='photo') resetMedia(); st.kind='photo';
-    for(const e of add) st.items.push({blob:e.blob,fp:e.fp||null,t:e.t,url:URL.createObjectURL(e.blob)});
+    for(const e of add) st.items.push({blob:e.blob,fp:e.fp||null,t:e.t,hu:!!e.hu,url:URL.createObjectURL(e.blob)});
     if(cut) toast('Egy posztba legfeljebb '+MAXP+' kép fér, '+cut+' kimaradt.');
     st.sel=Math.max(0,st.items.length-1); st.step='edit'; draw();
   }
@@ -2226,18 +2267,20 @@ function L_camera(opts={}){
     const sc=Math.min(1,1440/Math.max(v.videoWidth,v.videoHeight)); const c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*sc); c.height=Math.round(v.videoHeight*sc);
     const x=c.getContext('2d'); if(st.facing==='user'){ x.translate(c.width,0); x.scale(-1,1); } x.drawImage(v,0,0,c.width,c.height);
     const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.88)); if(!b) return;
-    const t=now(), fp=await printOfImage(b,b); const dup=findDup(fp)||findShapeDup(fp&&fp.pm,t)||sameMoment(t); if(dup){ pushLayer(L_dup(dup,false)); return; }
-    addPhotos([{blob:b,fp,t}]);
+    const t=now(), fp=await printOfImage(b,b); if(!looksLikePoop(fp)){ pushLayer(L_nopoop(false)); return; }
+    const dup=findDup(fp)||findShapeDup(fp&&fp.pm,t)||sameMoment(t); if(dup){ pushLayer(L_dup(dup,false)); return; }
+    addPhotos([{blob:b,fp,t,hu:!!(fp.sc&&fp.sc.toilet)}]);
   }
   /* a reel recorded with the in-app camera */
   async function gotReel(f){
     if(f.size>20*1024*1024) return toast('A videó túl nagy (max. 20 MB). Vegyél fel rövidebbet.');
-    const t=now(), vfp=await printOfVideo(f); const vd=findDup(vfp)||findShapeDup(vfp&&vfp.pm,t)||sameMoment(t); if(vd){ pushLayer(L_dup(vd,true)); return; }
-    st.mode='reel'; setMedia(f,'reel',vfp); st.vt=t;
+    const t=now(), vfp=await printOfVideo(f); if(!looksLikePoop(vfp)){ pushLayer(L_nopoop(true)); return; }
+    const vd=findDup(vfp)||findShapeDup(vfp&&vfp.pm,t)||sameMoment(t); if(vd){ pushLayer(L_dup(vd,true)); return; }
+    st.mode='reel'; setMedia(f,'reel',vfp); st.vt=t; st.vhu=!!(vfp.sc&&vfp.sc.toilet); draw();
   }
   async function share(){
     if(st.busy) return; if(!S.db) return toast(OFF); if(!S.uid) return needId(); if(!S.assets) return toast(NOUP);
-    const media=st.kind==='reel'?[{fp:st.vfp,t:st.vt}]:st.items.map(x=>({fp:x.fp,t:x.t}));
+    const media=st.kind==='reel'?[{fp:st.vfp,t:st.vt,hu:st.vhu}]:st.items.map(x=>({fp:x.fp,t:x.t,hu:x.hu}));
     media.forEach(m=>{ if(typeof m.t!=='number') m.t=now(); });
     const prints=media.map(m=>m.fp).filter(Boolean); const hit=media.map(m=>(m.fp&&(findDup(m.fp)||findShapeDup(m.fp.pm,m.t)))||sameMoment(m.t)).find(Boolean);
     if(hit){ pushLayer(L_dup(hit,st.kind==='reel')); return; }
@@ -2252,13 +2295,13 @@ function L_camera(opts={}){
     const cap=el.querySelector('#cap').value.trim().slice(0,2200); const dest=el.querySelector('#dest').value;
     const kind=st.kind;
     const doc={author:S.uid,kind,asset:ids[0],caption:cap,filter:st.filter,group:dest||null,at:now(),likes:{},comments:{}}; if(ids.length>1) doc.assets=ids;
-    doc.ct=media.map(m=>Math.min(m.t,doc.at));
+    doc.ct=media.map(m=>Math.min(m.t,doc.at)); doc.hu=media.some(m=>m.hu)?1:0;
     if(prints.length){ doc.fp=prints.map(f=>({d:f.d||'',c:f.c||'',f:f.f||''})); const sg=prints.map(f=>f.pm&&f.pm.sig?f.pm.sig:null); if(sg.some(Boolean)) doc.sg=sg; }
     const before=rankOf(S.uid);
     const ok=await w(()=>S.db.collection('posts').add(doc));
     if(!ok){ fail(); return; }
     toast(kind==='reel'?'Reel megosztva':'Megosztva');
-    const exp=(before.n+1)/7; const ni=RANKS.reduce((a,r,j)=>exp>=r.min?j:a,0);
+    const exp=(before.n+(doc.hu?1:0))/7; const ni=RANKS.reduce((a,r,j)=>exp>=r.min?j:a,0);
     if(doc.fp&&ok&&ok.id) indexPrints(ok.id,doc.fp,doc.at);
     if(ni>before.i) setTimeout(()=>toast('Rangot léptél: '+RANKS[ni].n+'!'),1400);
     popLayer(); if(!S.stack.length) setTab(kind==='reel'?'reels':'feed');
@@ -2454,7 +2497,7 @@ const rankMedal=(i,n=0,size=58)=>`<span class="rmd" style="--sz:${size}px">${ran
    posts / 7 a day, the same steps as the live rank). Counted from the week the profile was made; a week without a post
    is "Constipated". Returns the closed weeks per rank, oldest first; the same badge won again shows as ×2, ×3. */
 function weekBadges(uid){
-  const ps=okPosts().filter(p=>p.author===uid), joined=(S.people[uid]||{}).joined, out=RANKS.map(()=>[]);
+  const ps=okPosts().filter(p=>p.author===uid&&counts(p)), joined=(S.people[uid]||{}).joined, out=RANKS.map(()=>[]);
   let first=typeof joined==='number'&&joined>9466848e5?joined:Infinity; for(const p of ps) if(p.at<first) first=p.at;
   if(!isFinite(first)) return out;
   const cnt={}; for(const p of ps){ const k=weekKey(p.at); cnt[k]=(cnt[k]||0)+1; }
@@ -2468,7 +2511,7 @@ function rankBadgesRow(uid,own){
   return `<h3 class="aw-h pad">Heti rangjelvények</h3><div class="hl-row">${items.map(x=>`<button class="hl sm" data-act="ranks" data-uid="${h(uid)}">${rankMedal(x.i,x.n,44)}<span class="hl-l" data-noi18n>${RANKS[x.i].n.replace(' Pooper','')}</span><span class="hl-p">${x.n} hét</span></button>`).join('')}</div>`;
 }
 function rankOf(uid){
-  const ps=okPosts().filter(p=>p.author===uid); const n=ps.filter(p=>p.at>=now()-7*864e5).length; const avg=n/7;
+  const ps=okPosts().filter(p=>p.author===uid&&counts(p)); const n=ps.filter(p=>p.at>=now()-7*864e5).length; const avg=n/7;
   let i=0; RANKS.forEach((r,j)=>{ if(avg>=r.min) i=j; });
   return {i,r:RANKS[i],next:RANKS[i+1]||null,avg,n,today:ps.filter(p=>p.at>=periodStart('day')).length};
 }
@@ -2538,7 +2581,7 @@ Object.assign(EN,{
  'Elérted a legmagasabb rangot!':'You’ve reached the top rank!','Következő:':'Next:','7 napos átlag':'7-day average','ma':'today','Profil megosztása':'Share profile','Felhasználónév másolva':'Username copied'
 });
 Object.assign(EN,{"1. hely":"1st place","2. hely":"2nd place","3. hely":"3rd place","Top 10":"Top 10","Jelenlegi helyezés az összesített ranglistán":"Current standing on the all-time leaderboard","Még nincs érem.":"No awards yet.","Az érmek a lezárt napok, hetek, hónapok és évek helyezéseiért járnak: arany az 1., ezüst a 2., bronz a 3. helyért, és külön jelvény a top 10-ért. Minél hosszabb az időszak, annál díszesebb az érem.":"Awards come from placements on finished days, weeks, months and years: gold for 1st, silver for 2nd, bronze for 3rd, and a badge for the top 10. The longer the period, the fancier the award.","Kerülj a top 10-be egy napon, héten vagy hónapon, és itt jelenik meg az érmed.":"Reach the top 10 on a day, week or month and your award shows up here.","Gratulálunk!":"Congratulations!","Megnézem a profilomon":"View on my profile","A te helyezésed":"Your position","A lista a top 10-et mutatja. Amikor egy nap, hét, hónap vagy év lezárul, az első három helyezett arany, ezüst és bronz érmet kap a profiljára, a top 10 többi tagja pedig Top 10 jelvényt.":"The list shows the top 10. When a day, week, month or year ends, the top three get gold, silver and bronze awards on their profile, and the rest of the top 10 get a Top 10 badge."});
-Object.assign(EN,{"Helyezések":"Placements","Heti rangjelvények":"Weekly rank badges","Heti rang":"Weekly rank","Minden hét végén megkapod az adott heti rangod jelvényét. Az első a hét lezárása után jelenik meg itt.":"At the end of every week you get the badge of that week's rank. The first one shows up here once the week is closed.","Minden hét végén mindenki megkapja az adott heti rangja jelvényét, a hét posztjai alapján. Ha ugyanazt a rangot többször szerzed meg, a jelvényen ×2, ×3 jelzi. Amelyik héten nem posztolsz, arra a Constipated jelvény jár.":"At the end of every week everyone gets the badge of that week's rank, based on the week's posts. If you earn the same rank again, the badge shows ×2, ×3. A week without a post earns the Constipated badge.","Megjött a heti rangod!":"Your weekly rank is here!","A kamera nem érhető el":"The camera is not available","A kamera nem érhető el.":"The camera is not available.","Posztolni csak az app saját kamerájával lehet. Engedélyezd a kamerát, aztán próbáld újra.":"You can only post with the app's own camera. Allow the camera, then try again.","Kamera indítása…":"Starting the camera…","A felvétel ezen az eszközön nem működik.":"Recording does not work on this device.","Még egy kép":"One more photo","Még egy":"One more","Vissza a poszthoz":"Back to the post","Ez ugyanaz az alkalom":"This is the same occasion","1 percen belül készült egy korábbi képeddel.":"It was taken within a minute of one of your earlier pictures.","Egy alkalomról csak egy poszt mehet fel. Ami egy percen belül készül, azt ugyanannak az alkalomnak vesszük. Több képet egy posztba tehetsz.":"Only one post can go up per occasion. Anything taken within a minute counts as the same occasion. You can put several pictures into one post.","A két kép 10 percen belül készült, ilyenkor szigorúbb a vizsgálat.":"The two pictures were taken within 10 minutes, so the check is stricter.","Ez a kép már fent van":"This photo is already posted","Ez a videó már fent van":"This video is already posted","már posztolta":"already posted it","Minden képet és videót csak egyszer lehet feltölteni. Készíts egy újat!":"Every photo and video can only be uploaded once. Take a new one!","Eredeti poszt megnyitása":"Open the original post","Rendben":"OK","Ez a kép már benne van a posztban.":"This photo is already in the post.","1 kép már fent van, ezt kihagytam.":"1 photo is already posted, so I skipped it."});
+Object.assign(EN,{"Ezen a képen nem látok kakit":"I can't see any poop in this picture","Ezen a videón nem látok kakit":"I can't see any poop in this video","Csak olyan kép mehet fel, amin látszik. Bármilyen állaté lehet.":"Only pictures that show it can go up. Any animal's will do.","Fotózd közelebbről és jó fényben, hogy jól kivehető legyen.":"Shoot closer and in good light so it is easy to make out.","Vécében készült: beleszámít a rangodba.":"Taken in a toilet: it counts for your rank.","Nem vécében készült: felmegy, de nem számít a rangodba.":"Not taken in a toilet: it goes up but does not count for your rank.","Állati":"Animal","Helyezések":"Placements","Heti rangjelvények":"Weekly rank badges","Heti rang":"Weekly rank","Minden hét végén megkapod az adott heti rangod jelvényét. Az első a hét lezárása után jelenik meg itt.":"At the end of every week you get the badge of that week's rank. The first one shows up here once the week is closed.","Minden hét végén mindenki megkapja az adott heti rangja jelvényét, a hét posztjai alapján. Ha ugyanazt a rangot többször szerzed meg, a jelvényen ×2, ×3 jelzi. Amelyik héten nem posztolsz, arra a Constipated jelvény jár.":"At the end of every week everyone gets the badge of that week's rank, based on the week's posts. If you earn the same rank again, the badge shows ×2, ×3. A week without a post earns the Constipated badge.","Megjött a heti rangod!":"Your weekly rank is here!","A kamera nem érhető el":"The camera is not available","A kamera nem érhető el.":"The camera is not available.","Posztolni csak az app saját kamerájával lehet. Engedélyezd a kamerát, aztán próbáld újra.":"You can only post with the app's own camera. Allow the camera, then try again.","Kamera indítása…":"Starting the camera…","A felvétel ezen az eszközön nem működik.":"Recording does not work on this device.","Még egy kép":"One more photo","Még egy":"One more","Vissza a poszthoz":"Back to the post","Ez ugyanaz az alkalom":"This is the same occasion","1 percen belül készült egy korábbi képeddel.":"It was taken within a minute of one of your earlier pictures.","Egy alkalomról csak egy poszt mehet fel. Ami egy percen belül készül, azt ugyanannak az alkalomnak vesszük. Több képet egy posztba tehetsz.":"Only one post can go up per occasion. Anything taken within a minute counts as the same occasion. You can put several pictures into one post.","A két kép 10 percen belül készült, ilyenkor szigorúbb a vizsgálat.":"The two pictures were taken within 10 minutes, so the check is stricter.","Ez a kép már fent van":"This photo is already posted","Ez a videó már fent van":"This video is already posted","már posztolta":"already posted it","Minden képet és videót csak egyszer lehet feltölteni. Készíts egy újat!":"Every photo and video can only be uploaded once. Take a new one!","Eredeti poszt megnyitása":"Open the original post","Rendben":"OK","Ez a kép már benne van a posztban.":"This photo is already in the post.","1 kép már fent van, ezt kihagytam.":"1 photo is already posted, so I skipped it."});
 RULES.push([/^(\d+) kép már fent van, ezeket kihagytam\.$/,(m,a)=>a+' photos are already posted, so I skipped them.'],[/^(\d+) kép már benne van a posztban\.$/,(m,a)=>a+' photos are already in the post.']);
 Object.assign(EN,{"Ellenőrzés…":"Checking…","Ez túl hasonló egy korábbi poszthoz":"Too similar to an earlier post","Az AI szerint ugyanazt a kakit fotóztad le újra, csak másképp. Minden darab csak egyszer mehet fel.":"The AI thinks you photographed the same poop again, just differently. Each one can only go up once."});
 Object.assign(EN,{"alak- és mintázategyezés":"shape and texture match","korábbi poszt":"earlier post","az új kép":"the new photo","fedik egymást":"they overlap","A felismerő szerint ugyanazt fotóztad le újra, csak másképp. Minden darab csak egyszer mehet fel.":"The recognizer thinks you photographed the same one again, just differently. Each one can only go up once.","Egyezés-teszt":"Match test","Válassz két fotót. Megmutatom, mit vág ki belőlük a felismerő (narancssárgával), és mennyire tartja őket ugyanannak.":"Pick two photos. I show what the recognizer cuts out of them (in orange) and how alike it finds them.","1. fotó kiválasztása":"Choose photo 1","2. fotó kiválasztása":"Choose photo 2","1. fotó: téma megtalálva":"Photo 1: subject found","2. fotó: téma megtalálva":"Photo 2: subject found","1. fotó: nincs barna téma":"Photo 1: no brown subject","2. fotó: nincs barna téma":"Photo 2: no brown subject","1. fotó":"Photo 1","2. fotó":"Photo 2","Az egyik képen nem találtam barna témát, ezért nem tudok összehasonlítani.":"I found no brown subject in one of the photos, so I cannot compare them.","Nem sikerült az összehasonlítás.":"The comparison failed.","Ismétlésnek venném, és tiltanám.":"I would treat this as a repeat and block it.","Hasonló, de átengedném.":"Similar, but I would let it through.","Különbözőnek látom, átengedném.":"I see them as different and would let it through.","Alak fedése":"Shape overlap","Felszíni mintázat":"Surface pattern","Tiltási küszöb":"Blocking threshold","Az egyik képen a téma kilóg a képből, ilyenkor a felismerő kevésbé megbízható.":"In one photo the subject runs out of the frame, which makes the recognizer less reliable."});
