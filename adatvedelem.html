@@ -6,14 +6,16 @@
 @media (prefers-color-scheme:dark){:root{--bg:#1a110b;--fg:#f7ebde;--muted:#c4a58c;--line:#4a3122;--accent:#ff7a1a}}
 html{background:var(--bg)}body{margin:0 auto;max-width:720px;padding:28px 18px 60px;font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg)}
 h1{font-size:28px;line-height:1.2;margin:0 0 6px}h2{font-size:19px;margin:28px 0 6px}p,li{color:var(--fg)}.muted{color:var(--muted)}
-.todo{border:1px dashed var(--accent);border-radius:10px;padding:10px 14px;color:var(--muted)}a{color:var(--accent)}ul{padding-left:20px}
+img.op{height:19px;width:auto;vertical-align:middle}.op-t{border-collapse:collapse;margin:8px 0}.op-t th{text-align:left;font-weight:600;color:var(--muted);padding:6px 16px 6px 0;vertical-align:middle;white-space:nowrap}.op-t td{padding:6px 0}
+nav.legal{margin-top:36px;padding-top:14px;border-top:1px solid var(--line);font-size:14px}a{color:var(--accent)}ul{padding-left:20px}
 </style></head><body>
 <h1>Adatvédelmi tájékoztató</h1>
 <p class="muted">PoopHub alkalmazás és weboldal · hatályos: 2026. november 11-től</p>
 
 <h2>1. Ki kezeli az adataidat?</h2>
-<p>Az adatkezelő a PoopHub üzemeltetője.</p>
-<p class="todo">Ide kerül az üzemeltető neve, címe és elérhetősége (e-mail-cím), mielőtt az app nyilvánosan elindul.</p>
+<p>Az adatkezelő a PoopHub üzemeltetője:</p>
+<table class="op-t"><tr><th>Név</th><td><picture><source media="(prefers-color-scheme: dark)" srcset="op-name-d.png"><img class="op" src="op-name.png" alt="az üzemeltető neve"></picture></td></tr><tr><th>Cím</th><td><picture><source media="(prefers-color-scheme: dark)" srcset="op-address-d.png"><img class="op" src="op-address.png" alt="az üzemeltető címe"></picture></td></tr><tr><th>E-mail</th><td><picture><source media="(prefers-color-scheme: dark)" srcset="op-email-d.png"><img class="op" src="op-email.png" alt="az üzemeltető e-mail-címe"></picture></td></tr></table>
+<p>Az adataiddal kapcsolatos kérdéseiddel és kéréseiddel ezen az e-mail-címen kereshetsz minket.</p>
 
 <h2>2. Milyen adatokat kezelünk?</h2>
 <ul>
@@ -50,4 +52,5 @@ h1{font-size:28px;line-height:1.2;margin:0 0 6px}h2{font-size:19px;margin:28px 0
 
 <h2>8. Változások</h2>
 <p>Ha a tájékoztató lényegesen változik, az appban szólunk róla.</p>
+<nav class="legal"><a href="impresszum.html">Impresszum</a> · <a href="adatvedelem.html">Adatvédelmi tájékoztató</a> · <a href="feltetelek.html">Felhasználási feltételek</a></nav>
 </body></html>
