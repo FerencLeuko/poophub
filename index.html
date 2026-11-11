@@ -1291,6 +1291,80 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 /*</PoopLocal>*/
 </script>
 <script>
+/*<PoopNet> generated from poopnet.js by tools/inline.js - edit poopnet.js, not this block */
+/* PoopNet — "is there poop in this picture?" and "is this a toilet?" A small picture classifier that runs on the device,
+   in plain JavaScript, with no library and no service. The first part is MobileNet v1 (the open model by Google, Apache 2.0
+   licence): 27 convolution layers that turn a picture into a list of numbers describing what it shows. The last part is
+   ours: two single layers trained on labelled photos (tools/poopnet), one per question. A weights file holds it all. */
+(function (root) {
+  'use strict';
+  /* "same" padding of TensorFlow: output size and the padding in front */
+  function same(n, k, s) { var o = Math.ceil(n / s), p = Math.max((o - 1) * s + k - n, 0); return [o, p >> 1]; }
+  /* 3×3 convolution over all channels (the first layer), then ReLU6 */
+  function conv3(x, H, W, Ci, L) {
+    var s = L.stride, Co = L.cout, w = L.w, b = L.b, oh = same(H, 3, s), ow = same(W, 3, s), OH = oh[0], OW = ow[0], out = new Float32Array(OH * OW * Co), oy, ox, ky, kx, ci, co;
+    for (oy = 0; oy < OH; oy++) for (ox = 0; ox < OW; ox++) { var o = (oy * OW + ox) * Co; for (co = 0; co < Co; co++) out[o + co] = b[co];
+      for (ky = 0; ky < 3; ky++) { var iy = oy * s + ky - oh[1]; if (iy < 0 || iy >= H) continue;
+        for (kx = 0; kx < 3; kx++) { var ix = ox * s + kx - ow[1]; if (ix < 0 || ix >= W) continue; var xi = (iy * W + ix) * Ci, wi = (ky * 3 + kx) * Ci * Co;
+          for (ci = 0; ci < Ci; ci++) { var v = x[xi + ci], wo = wi + ci * Co; for (co = 0; co < Co; co++) out[o + co] += v * w[wo + co]; } } }
+      for (co = 0; co < Co; co++) { v = out[o + co]; out[o + co] = v < 0 ? 0 : v > 6 ? 6 : v; } }
+    return { d: out, h: OH, w: OW, c: Co };
+  }
+  /* 3×3 convolution inside each channel, then ReLU6 */
+  function depth3(x, H, W, C, L) {
+    var s = L.stride, w = L.w, b = L.b, oh = same(H, 3, s), ow = same(W, 3, s), OH = oh[0], OW = ow[0], out = new Float32Array(OH * OW * C), oy, ox, ky, kx, c;
+    for (oy = 0; oy < OH; oy++) for (ox = 0; ox < OW; ox++) { var o = (oy * OW + ox) * C; for (c = 0; c < C; c++) out[o + c] = b[c];
+      for (ky = 0; ky < 3; ky++) { var iy = oy * s + ky - oh[1]; if (iy < 0 || iy >= H) continue;
+        for (kx = 0; kx < 3; kx++) { var ix = ox * s + kx - ow[1]; if (ix < 0 || ix >= W) continue; var xi = (iy * W + ix) * C, wi = (ky * 3 + kx) * C; for (c = 0; c < C; c++) out[o + c] += x[xi + c] * w[wi + c]; } }
+      for (c = 0; c < C; c++) { var v = out[o + c]; out[o + c] = v < 0 ? 0 : v > 6 ? 6 : v; } }
+    return { d: out, h: OH, w: OW, c: C };
+  }
+  /* 1×1 convolution: mixes the channels of every pixel, then ReLU6 */
+  function point(x, H, W, Ci, L) {
+    var Co = L.cout, w = L.w, b = L.b, n = H * W, out = new Float32Array(n * Co), p, ci, co;
+    for (p = 0; p < n; p++) { var o = p * Co, xi = p * Ci; for (co = 0; co < Co; co++) out[o + co] = b[co];
+      for (ci = 0; ci < Ci; ci++) { var v = x[xi + ci]; if (v === 0) continue; var wo = ci * Co; for (co = 0; co < Co; co++) out[o + co] += v * w[wo + co]; }
+      for (co = 0; co < Co; co++) { v = out[o + co]; out[o + co] = v < 0 ? 0 : v > 6 ? 6 : v; } }
+    return { d: out, h: H, w: W, c: Co };
+  }
+  /* picture (RGBA bytes, any size) -> the network's input: SIZE × SIZE, the middle square, values -1..1 */
+  function input(img, size, mirror) {
+    var W = img.width, H = img.height, d = img.data, side = Math.min(W, H), x0 = (W - side) / 2, y0 = (H - side) / 2, f = side / size, out = new Float32Array(size * size * 3), x, y;
+    for (y = 0; y < size; y++) for (x = 0; x < size; x++) { var a0 = Math.floor(x0 + x * f), a1 = Math.max(a0 + 1, Math.floor(x0 + (x + 1) * f)), b0 = Math.floor(y0 + y * f), b1 = Math.max(b0 + 1, Math.floor(y0 + (y + 1) * f)), r = 0, g = 0, b = 0, n = 0;
+      for (var yy = b0; yy < b1 && yy < H; yy++) for (var xx = a0; xx < a1 && xx < W; xx++) { var i = (yy * W + xx) * 4; r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+      var o = (y * size + (mirror ? size - 1 - x : x)) * 3; out[o] = r / n / 127.5 - 1; out[o + 1] = g / n / 127.5 - 1; out[o + 2] = b / n / 127.5 - 1; }
+    return out;
+  }
+  /* the description of a picture: the average of the last layer over the whole picture */
+  function features(net, img, mirror) {
+    var size = net.size, t = { d: input(img, size, mirror), h: size, w: size, c: 3 }, i, L;
+    for (i = 0; i < net.layers.length; i++) { L = net.layers[i]; t = L.kind === 'conv' ? conv3(t.d, t.h, t.w, t.c, L) : L.kind === 'depth' ? depth3(t.d, t.h, t.w, t.c, L) : point(t.d, t.h, t.w, t.c, L); }
+    var n = t.h * t.w, f = new Float32Array(t.c), p, c; for (p = 0; p < n; p++) for (c = 0; c < t.c; c++) f[c] += t.d[p * t.c + c]; for (c = 0; c < t.c; c++) f[c] /= n;
+    return f;
+  }
+  /* 0..1 for each question the weights file knows ("poop", "toilet"): how sure the net is. mirror: look at the mirror image */
+  function scores(net, img, mirror) {
+    var f = features(net, img, mirror), out = {}, k, i;
+    for (k in net.heads) { var h = net.heads[k], z = h.b; for (i = 0; i < f.length; i++) z += f[i] * h.w[i]; out[k] = 1 / (1 + Math.exp(-z)); }
+    return out;
+  }
+  /* Weights file: 4 bytes "PNET", 4 bytes header length, a JSON header, then the numbers. The header lists the layers
+     ({kind, stride, cin, cout, w: [offset, length], q: [offset, length], b: [offset, length]}) and the answer layers
+     (heads: {name: {w: [offset, length], b}}). Kernels are stored as bytes; every output channel has its own scale
+     (q holds min and step per channel: value = min + byte × step), because the channels differ a lot in size. Biases, scales
+     and the answer layers are 32-bit floats. limit: the "poop" score from which a picture is let through. */
+  function load(buf) {
+    var u8 = new Uint8Array(buf), dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== 'PNET') throw new Error('not a PoopNet file');
+    var hl = dv.getUint32(4, true), txt = '', i; for (i = 0; i < hl; i++) txt += String.fromCharCode(u8[8 + i]); var h = JSON.parse(txt), base = 8 + hl;
+    var floats = function (a) { var o = new Float32Array(a[1]); for (var k = 0; k < a[1]; k++) o[k] = dv.getFloat32(base + a[0] + k * 4, true); return o; };
+    var bytes = function (a, q, co) { var o = new Float32Array(a[1]), s = base + a[0]; for (var k = 0; k < a[1]; k++) { var c = k % co; o[k] = q[c * 2] + u8[s + k] * q[c * 2 + 1]; } return o; };
+    return { size: h.size, layers: h.layers.map(function (L) { return { kind: L.kind, stride: L.stride, cin: L.cin, cout: L.cout, w: bytes(L.w, floats(L.q), L.cout), b: floats(L.b) }; }), heads: Object.keys(h.heads || {}).reduce(function (o, k) { o[k] = { w: floats(h.heads[k].w), b: h.heads[k].b }; return o; }, {}), limit: h.limit };
+  }
+  root.PoopNet = { load: load, features: features, scores: scores, input: input };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+/*</PoopNet>*/
+</script>
+<script>
 "use strict";
 /* ---------- helpers ---------- */
 const $=(s,r=document)=>r.querySelector(s);
@@ -1625,14 +1699,14 @@ function fpFromSource(src){
 }
 async function printOfImage(blob,orig){
   const url=URL.createObjectURL(blob);
-  try{ const img=new Image(); img.src=url; await img.decode(); const fp=fpFromSource(img); fp.pm=shapePrep(img); fp.sc=sceneOf(img); fp.f=await sha(orig||blob); return fp; }catch{ return null; } finally{ URL.revokeObjectURL(url); }
+  try{ const img=new Image(); img.src=url; await img.decode(); const fp=fpFromSource(img); fp.pm=shapePrep(img); fp.sc=sceneOf(img); fp.ok=poopCheck(img,fp); fp.f=await sha(orig||blob); return fp; }catch{ return null; } finally{ URL.revokeObjectURL(url); }
 }
 async function printOfVideo(file){
   const fp={f:await sha(file)}; const url=URL.createObjectURL(file);
   try{
     const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=url;
     await new Promise((res,rej)=>{ const t=setTimeout(()=>rej(new Error('timeout')),4000); v.onloadeddata=()=>{ const to=Math.min(1,(v.duration||2)/3); v.onseeked=()=>{ clearTimeout(t); res(); }; try{ v.currentTime=to; }catch(e){ clearTimeout(t); rej(e); } }; v.onerror=()=>{ clearTimeout(t); rej(new Error('video')); }; });
-    Object.assign(fp,fpFromSource(v)); fp.pm=shapePrep(v); fp.sc=sceneOf(v);
+    Object.assign(fp,fpFromSource(v)); fp.pm=shapePrep(v); fp.sc=sceneOf(v); fp.ok=poopCheck(v,fp);
   }catch{} finally{ URL.revokeObjectURL(url); }
   return fp.f||fp.d?fp:null;
 }
@@ -1676,12 +1750,30 @@ function unindexPrints(p){
 /* Shape check (PoopMatch, source in match.js): the same subject photographed again - rotated, tilted, zoomed, re-lit, mirrored.
    Runs entirely in the browser: no AI service, no model download. Each post image carries a 1-4 KB signature in `sg`. */
 const SHAPE_BLOCK=0.75, SHAPE_NEAR=0.65;
-/* What the picture shows, as far as the app's own recognizer can tell (no AI model):
-   - looksLikePoop: a subject was found and its colour is brownish, yellowish or dark. This stops clean toilets, blank walls and
-     things of another colour; it cannot tell a brown object from the real thing.
+/* What the picture shows:
+   - looksLikePoop: the recognizer found a subject and its colour is brownish, yellowish or dark. On its own this only stops
+     clean toilets, blank walls and things of another colour; the real judge is poopCheck below, where the classifier is there.
    - toilet picture (sceneOf(...).toilet): a good part of the photo is smooth, bright porcelain. Posts made in a toilet count as
      mine (human) for the rank and the weekly badges; anything else (grass, soil, street: animals) goes up but does not count. */
 function sceneOf(src){ try{ return PoopMatch.scene(PoopMatch.toPixels(src)); }catch(e){ return null; } }
+/* PoopNet (poopnet.js, weights in poopnet.bin): a small picture classifier that runs on the device. Its weights file sits
+   next to the packaged app and the website; where it is missing (the single-file claude.ai version) the colour check
+   below decides alone. A picture is let through when
+   - the net says "poop" (score at least NET.limit; in the unsure range it also looks at the mirror image), or
+   - the net says "toilet", the photo shows porcelain, and the recognizer found a clear brownish or dark thing in it.
+     This second way is deliberately loose: a small stool in a photo of a whole toilet must not be turned away. */
+let NET=null;
+try{ fetch('poopnet.bin').then(r=>r.ok?r.arrayBuffer():null).then(b=>{ if(b) NET=PoopNet.load(b); }).catch(()=>{}); }catch(e){}
+function poopCheck(src,fp){
+  if(!NET) return looksLikePoop(fp);
+  try{
+    const img=PoopMatch.toPixels(src); let s=PoopNet.scores(NET,img);
+    if(s.poop>=.15&&s.poop<.7){ const m=PoopNet.scores(NET,img,true); s={poop:(s.poop+m.poop)/2,toilet:(s.toilet+m.toilet)/2}; }
+    if(s.poop>=NET.limit) return true;
+    const pm=fp&&fp.pm, t=pm&&pm.tone;
+    return s.toilet>=.5&&!!(fp&&fp.sc&&fp.sc.toilet)&&looksLikePoop(fp)&&pm.seg.comps.length<=6&&!!t&&(t.s>=.4||t.v<100);
+  }catch(e){ console.warn('picture check skipped',e); return looksLikePoop(fp); }
+}
 function looksLikePoop(fp){
   const pm=fp&&fp.pm; if(!pm||!pm.seg||pm.seg.frac<0.008) return false;
   const t=pm.tone; if(!t) return true;
@@ -2269,14 +2361,14 @@ function L_camera(opts={}){
     const sc=Math.min(1,1440/Math.max(v.videoWidth,v.videoHeight)); const c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*sc); c.height=Math.round(v.videoHeight*sc);
     const x=c.getContext('2d'); if(st.facing==='user'){ x.translate(c.width,0); x.scale(-1,1); } x.drawImage(v,0,0,c.width,c.height);
     const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.88)); if(!b) return;
-    const t=now(), fp=await printOfImage(b,b); if(!looksLikePoop(fp)){ pushLayer(L_nopoop(false)); return; }
+    const t=now(), fp=await printOfImage(b,b); if(!fp||!fp.ok){ pushLayer(L_nopoop(false)); return; }
     const dup=findDup(fp)||findShapeDup(fp&&fp.pm,t)||sameMoment(t); if(dup){ pushLayer(L_dup(dup,false)); return; }
     addPhotos([{blob:b,fp,t,hu:!!(fp.sc&&fp.sc.toilet)}]);
   }
   /* a reel recorded with the in-app camera */
   async function gotReel(f){
     if(f.size>20*1024*1024) return toast('A videó túl nagy (max. 20 MB). Vegyél fel rövidebbet.');
-    const t=now(), vfp=await printOfVideo(f); if(!looksLikePoop(vfp)){ pushLayer(L_nopoop(true)); return; }
+    const t=now(), vfp=await printOfVideo(f); if(!vfp||!vfp.ok){ pushLayer(L_nopoop(true)); return; }
     const vd=findDup(vfp)||findShapeDup(vfp&&vfp.pm,t)||sameMoment(t); if(vd){ pushLayer(L_dup(vd,true)); return; }
     st.mode='reel'; setMedia(f,'reel',vfp); st.vt=t; st.vhu=!!(vfp.sc&&vfp.sc.toilet); draw();
   }
